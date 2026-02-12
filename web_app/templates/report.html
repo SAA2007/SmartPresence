@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Report Issue - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-bug"></i> Report an Issue</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card glass-card">
+            <div class="card-body">
+                <form onsubmit="submitReport(event)">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Category</label>
+                            <select id="reportCategory" class="form-select">
+                                <option value="bug">🐛 Bug / Error</option>
+                                <option value="recognition">🤖 Recognition Issue</option>
+                                <option value="ui">🎨 UI / Display Issue</option>
+                                <option value="performance">⚡ Performance</option>
+                                <option value="feature">💡 Feature Request</option>
+                                <option value="other">📋 Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Severity</label>
+                            <select id="reportSeverity" class="form-select">
+                                <option value="low">🟡 Low</option>
+                                <option value="medium" selected>🟠 Medium</option>
+                                <option value="critical">🔴 Critical</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Description <span class="text-danger">*</span></label>
+                            <textarea id="reportDescription" class="form-control" rows="5"
+                                placeholder="Describe the issue in detail. What happened? What did you expect?"
+                                required></textarea>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" style="border-color:var(--border-color);">
+
+                    <p class="small text-muted mb-2"><i class="bi bi-info-circle"></i> Select what data to include in
+                        the report:</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeSystem" checked>
+                                <label class="form-check-label small" for="includeSystem">System State</label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeSettings" checked>
+                                <label class="form-check-label small" for="includeSettings">AI Settings</label>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeBrowser">
+                                <label class="form-check-label small" for="includeBrowser">Browser Info</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-accent" id="submitBtn">
+                        <i class="bi bi-send"></i> Submit Report
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card glass-card">
+            <div class="card-body">
+                <h6><i class="bi bi-lightbulb"></i> Tips</h6>
+                <ul class="small text-muted mb-0">
+                    <li>Be specific — include what you were doing</li>
+                    <li>For recognition issues, mention lighting conditions</li>
+                    <li>Critical severity = system is unusable</li>
+                    <li>Reports are saved locally + sent to Telegram</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function submitReport(e) {
+        e.preventDefault();
+        const btn = document.getElementById('submitBtn');
+        const desc = document.getElementById('reportDescription').value.trim();
+        if (!desc) { showToast('Description is required', 'error'); return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
+
+        fetch('/api/report', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                description: desc,
+                category: document.getElementById('reportCategory').value,
+                severity: document.getElementById('reportSeverity').value,
+                include_system: document.getElementById('includeSystem').checked,
+                include_settings: document.getElementById('includeSettings').checked,
+                include_browser: document.getElementById('includeBrowser').checked,
+                user_agent: navigator.userAgent
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                let msg = 'Report submitted!';
+                if (data.telegram_sent) msg += ' 📤 Sent to Telegram.';
+                else msg += ' (Telegram not configured)';
+                showToast(msg, 'success');
+                document.getElementById('reportDescription').value = '';
+            } else {
+                showToast(data.error || 'Failed to submit', 'error');
+            }
+        }).catch(() => showToast('Network error', 'error'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-send"></i> Submit Report';
+            });
+    }
+</script>
+{% endblock %}

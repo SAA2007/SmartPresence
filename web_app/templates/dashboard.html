@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+    <div class="header-actions">
+        <input type="date" id="dateFilter" class="form-control form-control-sm" style="width:180px;">
+        <div class="dropdown">
+            <button class="btn btn-sm btn-accent dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" id="exportXlsx" href="/api/export?format=xlsx"><i
+                            class="bi bi-file-earmark-excel text-success"></i> Excel (.xlsx)</a></li>
+                <li><a class="dropdown-item" id="exportCsv" href="/api/export?format=csv"><i
+                            class="bi bi-filetype-csv text-info"></i> CSV (.csv)</a></li>
+                <li>
+                    <hr class="dropdown-divider">
+                </li>
+                <li><a class="dropdown-item" href="#" onclick="exportDateRange()"><i class="bi bi-calendar-range"></i>
+                        Date Range...</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card stat-card--primary">
+        <div class="stat-icon"><i class="bi bi-people"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalStudents">--</span>
+            <span class="stat-label">Total Students</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card--success">
+        <div class="stat-icon"><i class="bi bi-person-check"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="presentToday">--</span>
+            <span class="stat-label">Present Today</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card--danger">
+        <div class="stat-icon"><i class="bi bi-person-x"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="absentToday">--</span>
+            <span class="stat-label">Absent Today</span>
+        </div>
+    </div>
+    <div class="stat-card stat-card--info">
+        <div class="stat-icon"><i class="bi bi-journal-text"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="totalLogs">--</span>
+            <span class="stat-label">Total Logs</span>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Chart -->
+<div class="card glass-card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Attendance Trend</h5>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-light active" onclick="loadChart(7, this)">7 Days</button>
+            <button class="btn btn-outline-light" onclick="loadChart(14, this)">14 Days</button>
+            <button class="btn btn-outline-light" onclick="loadChart(30, this)">30 Days</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <canvas id="attendanceChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- Manual Attendance + Table Row -->
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-pencil-square"></i> Manual Entry</h6>
+            </div>
+            <div class="card-body">
+                <select id="manualStudent" class="form-select form-select-sm mb-2">
+                    <option value="">Select student...</option>
+                </select>
+                <select id="manualStatus" class="form-select form-select-sm mb-2">
+                    <option value="On Time">On Time</option>
+                    <option value="Present">Present</option>
+                    <option value="Late">Late</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Early Leave">Early Leave</option>
+                    <option value="Disappeared">Disappeared</option>
+                    <option value="Permitted">Permitted Absence</option>
+                    <option value="Excused">Excused</option>
+                </select>
+                <input type="text" id="manualNotes" class="form-control form-control-sm mb-2"
+                    placeholder="Notes (optional)">
+                <button class="btn btn-accent btn-sm w-100" onclick="submitManual()">
+                    <i class="bi bi-plus-circle"></i> Submit
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-table"></i> Attendance Records</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Student</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceTable">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Date Range Modal -->
+<div class="modal fade" id="dateRangeModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:var(--bg-secondary);border:1px solid var(--border-color);">
+            <div class="modal-header border-0">
+                <h6 class="modal-title">Export Date Range</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label small">From</label>
+                <input type="date" id="exportFrom" class="form-control form-control-sm mb-2">
+                <label class="form-label small">To</label>
+                <input type="date" id="exportTo" class="form-control form-control-sm mb-3">
+                <div class="d-flex gap-2">
+                    <a id="rangeXlsx" href="#" class="btn btn-accent btn-sm flex-fill"><i
+                            class="bi bi-file-earmark-excel"></i> Excel</a>
+                    <a id="rangeCsv" href="#" class="btn btn-outline-light btn-sm flex-fill"><i
+                            class="bi bi-filetype-csv"></i> CSV</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Override Modal -->
+<div class="modal fade" id="overrideModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:var(--bg-secondary);border:1px solid var(--border-color);">
+            <div class="modal-header border-0">
+                <h6 class="modal-title">Override Record</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="overrideId">
+                <select id="overrideStatus" class="form-select form-select-sm mb-2">
+                    <option value="On Time">On Time</option>
+                    <option value="Present">Present</option>
+                    <option value="Late">Late</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Early Leave">Early Leave</option>
+                    <option value="Disappeared">Disappeared</option>
+                    <option value="Permitted">Permitted Absence</option>
+                    <option value="Excused">Excused</option>
+                </select>
+                <input type="text" id="overrideNotes" class="form-control form-control-sm mb-2" placeholder="Notes">
+                <button class="btn btn-accent btn-sm w-100" onclick="submitOverride()">Save Override</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    let chart = null;
+
+    // Load students for manual entry
+    fetch('/api/students').then(r => r.json()).then(students => {
+        const sel = document.getElementById('manualStudent');
+        students.forEach(s => {
+            sel.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+        });
+    });
+
+    // Manual attendance submit
+    function submitManual() {
+        const sid = document.getElementById('manualStudent').value;
+        if (!sid) { showToast('Select a student first'); return; }
+
+        fetch('/api/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_id: parseInt(sid),
+                status: document.getElementById('manualStatus').value,
+                notes: document.getElementById('manualNotes').value
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showToast('Attendance recorded!');
+                loadAttendance();
+                loadStats();
+                document.getElementById('manualNotes').value = '';
+            } else {
+                showToast('Error: ' + (data.error || 'Unknown'));
+            }
+        });
+    }
+
+    // Override
+    function openOverride(logId, currentStatus, currentNotes) {
+        document.getElementById('overrideId').value = logId;
+        document.getElementById('overrideStatus').value = currentStatus;
+        document.getElementById('overrideNotes').value = currentNotes || '';
+        new bootstrap.Modal(document.getElementById('overrideModal')).show();
+    }
+
+    function submitOverride() {
+        const id = document.getElementById('overrideId').value;
+        fetch(`/api/attendance/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                status: document.getElementById('overrideStatus').value,
+                notes: document.getElementById('overrideNotes').value
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showToast('Override saved!');
+                bootstrap.Modal.getInstance(document.getElementById('overrideModal')).hide();
+                loadAttendance();
+                loadStats();
+            }
+        });
+    }
+
+    function deleteLog(id) {
+        if (!confirm('Delete this attendance record?')) return;
+        fetch(`/api/attendance/${id}`, { method: 'DELETE' })
+            .then(r => r.json()).then(() => {
+                showToast('Record deleted');
+                loadAttendance();
+                loadStats();
+            });
+    }
+
+    // Export controls
+    function exportDateRange() {
+        new bootstrap.Modal(document.getElementById('dateRangeModal')).show();
+    }
+
+    document.getElementById('exportFrom')?.addEventListener('change', updateRangeLinks);
+    document.getElementById('exportTo')?.addEventListener('change', updateRangeLinks);
+
+    function updateRangeLinks() {
+        const from = document.getElementById('exportFrom').value;
+        const to = document.getElementById('exportTo').value;
+        if (from && to) {
+            document.getElementById('rangeXlsx').href = `/api/export?format=xlsx&from=${from}&to=${to}`;
+            document.getElementById('rangeCsv').href = `/api/export?format=csv&from=${from}&to=${to}`;
+        }
+    }
+
+    // Chart
+    function loadChart(days, btn) {
+        if (btn) {
+            btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        fetch(`/api/stats/chart?days=${days}`).then(r => r.json()).then(data => {
+            const ctx = document.getElementById('attendanceChart').getContext('2d');
+
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels.map(d => {
+                        const dt = new Date(d + 'T00:00:00');
+                        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }),
+                    datasets: [
+                        {
+                            label: 'Present',
+                            data: data.present,
+                            backgroundColor: 'rgba(46, 204, 113, 0.7)',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Absent',
+                            data: data.absent,
+                            backgroundColor: 'rgba(231, 76, 60, 0.4)',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { labels: { color: '#8b8fa3' } }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            ticks: { color: '#8b8fa3' },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: { color: '#8b8fa3', stepSize: 1 },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    loadChart(7);
+</script>
+{% endblock %}

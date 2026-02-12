@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Live View - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-camera-video"></i> Live Class View</h1>
+    <div class="header-actions">
+        <span class="badge bg-success" id="liveStatus">
+            <i class="bi bi-record-circle"></i> LIVE
+        </span>
+    </div>
+</div>
+
+<div class="live-layout">
+    <!-- Video Feed -->
+    <div class="card glass-card video-card">
+        <div class="card-body p-0">
+            <img src="/video_feed" alt="Live Camera Feed" id="videoFeed" class="video-feed">
+        </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="live-panel">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-people"></i> Detected Faces</h6>
+            </div>
+            <div class="card-body">
+                <div id="detectedList" class="detected-list">
+                    <p class="text-muted small">Waiting for AI...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card glass-card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-sliders"></i> Quick Controls</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label small">AI Scale</label>
+                    <div class="btn-group w-100" role="group">
+                        <button class="btn btn-sm btn-outline-light" onclick="setScale(0.5)">Speed (0.5x)</button>
+                        <button class="btn btn-sm btn-outline-light" onclick="setScale(1.0)">Distance (1.0x)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function setScale(val) {
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ detection_scale: val })
+        }).then(() => {
+            showToast('Scale set to ' + val + 'x');
+        });
+    }
+
+    // Auto-refresh detected faces
+    setInterval(() => {
+        fetch('/api/stats').then(r => r.json()).then(data => {
+            const el = document.getElementById('detectedList');
+            if (data.present_today > 0) {
+                el.innerHTML = `<p class="text-success"><i class="bi bi-check-circle"></i> ${data.present_today} student(s) present</p>`;
+            }
+        });
+    }, 3000);
+</script>
+{% endblock %}

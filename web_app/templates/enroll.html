@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Enrollment - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-person-plus"></i> Web Enrollment</h1>
+</div>
+
+<div class="row g-4">
+    <!-- Camera Capture -->
+    <div class="col-md-7">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-camera"></i> Capture Photo</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="enroll-video-container mb-3">
+                    <video id="enrollVideo" autoplay playsinline class="enroll-video"></video>
+                    <canvas id="enrollCanvas" style="display:none;"></canvas>
+                    <img id="capturedPhoto" class="enroll-video" style="display:none;">
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button class="btn btn-accent" id="captureBtn" onclick="capturePhoto()">
+                        <i class="bi bi-camera"></i> Capture
+                    </button>
+                    <button class="btn btn-outline-light" id="retakeBtn" onclick="retakePhoto()" style="display:none;">
+                        <i class="bi bi-arrow-counterclockwise"></i> Retake
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">Or upload a photo:</small>
+                    <input type="file" accept="image/*" id="photoUpload" class="form-control form-control-sm mt-1"
+                        style="max-width:300px;margin:0 auto;" onchange="handleUpload(this)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enrollment Form -->
+    <div class="col-md-5">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-lines-fill"></i> Student Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                    <input type="text" id="enrollName" class="form-control" placeholder="First and Last Name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Student ID</label>
+                    <input type="text" id="enrollSid" class="form-control" placeholder="e.g. 2024-CS-101">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="enrollEmail" class="form-control" placeholder="student@university.edu">
+                </div>
+                <div id="enrollStatus" class="mb-3" style="display:none;"></div>
+                <button class="btn btn-accent w-100" id="enrollBtn" onclick="enrollStudent()" disabled>
+                    <i class="bi bi-person-check"></i> Enroll Student
+                </button>
+            </div>
+        </div>
+
+        <div class="card glass-card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Tips</h6>
+            </div>
+            <div class="card-body small text-muted">
+                <ul class="mb-0 ps-3">
+                    <li>Face the camera directly with good lighting</li>
+                    <li>Only one person should be in the frame</li>
+                    <li>Remove hats or sunglasses</li>
+                    <li>You can also upload any clear photo</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let imageData = null;
+    let videoStream = null;
+
+    // Start webcam
+    async function startCamera() {
+        try {
+            videoStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 1280, height: 720, facingMode: 'user' }
+            });
+            document.getElementById('enrollVideo').srcObject = videoStream;
+        } catch (e) {
+            console.warn('Camera not available:', e);
+        }
+    }
+
+    function capturePhoto() {
+        const video = document.getElementById('enrollVideo');
+        const canvas = document.getElementById('enrollCanvas');
+        const photo = document.getElementById('capturedPhoto');
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+
+        imageData = canvas.toDataURL('image/jpeg', 0.9);
+        photo.src = imageData;
+
+        video.style.display = 'none';
+        photo.style.display = 'block';
+        document.getElementById('captureBtn').style.display = 'none';
+        document.getElementById('retakeBtn').style.display = 'inline-block';
+        document.getElementById('enrollBtn').disabled = false;
+    }
+
+    function retakePhoto() {
+        const video = document.getElementById('enrollVideo');
+        const photo = document.getElementById('capturedPhoto');
+
+        video.style.display = 'block';
+        photo.style.display = 'none';
+        document.getElementById('captureBtn').style.display = 'inline-block';
+        document.getElementById('retakeBtn').style.display = 'none';
+        document.getElementById('enrollBtn').disabled = true;
+        imageData = null;
+    }
+
+    function handleUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            imageData = e.target.result;
+            const photo = document.getElementById('capturedPhoto');
+            const video = document.getElementById('enrollVideo');
+
+            photo.src = imageData;
+            video.style.display = 'none';
+            photo.style.display = 'block';
+            document.getElementById('captureBtn').style.display = 'none';
+            document.getElementById('retakeBtn').style.display = 'inline-block';
+            document.getElementById('enrollBtn').disabled = false;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function enrollStudent() {
+        const name = document.getElementById('enrollName').value.trim();
+        if (!name) { showToast('Name is required'); return; }
+        if (!imageData) { showToast('Capture or upload a photo first'); return; }
+
+        const btn = document.getElementById('enrollBtn');
+        const status = document.getElementById('enrollStatus');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processing...';
+        status.style.display = 'none';
+
+        fetch('/api/enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                student_id: document.getElementById('enrollSid').value.trim(),
+                email: document.getElementById('enrollEmail').value.trim(),
+                image: imageData
+            })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    status.style.display = 'block';
+                    status.className = 'mb-3 alert alert-success py-2 small';
+                    status.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${name}</strong> enrolled successfully! The AI will recognize them immediately.`;
+                    showToast(`${name} enrolled!`);
+
+                    // Reset form
+                    document.getElementById('enrollName').value = '';
+                    document.getElementById('enrollSid').value = '';
+                    document.getElementById('enrollEmail').value = '';
+                    retakePhoto();
+                } else {
+                    status.style.display = 'block';
+                    status.className = 'mb-3 alert alert-danger py-2 small';
+                    status.innerHTML = `<i class="bi bi-exclamation-circle"></i> ${data.error}`;
+                    btn.disabled = false;
+                }
+                btn.innerHTML = '<i class="bi bi-person-check"></i> Enroll Student';
+            })
+            .catch(err => {
+                status.style.display = 'block';
+                status.className = 'mb-3 alert alert-danger py-2 small';
+                status.innerHTML = `<i class="bi bi-exclamation-circle"></i> Network error: ${err.message}`;
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-person-check"></i> Enroll Student';
+            });
+    }
+
+    startCamera();
+</script>
+{% endblock %}

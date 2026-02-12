@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Student Profile - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-person-lines-fill"></i> <span id="studentName">Student Profile</span></h1>
+    <a href="/students" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-left"></i> Back</a>
+</div>
+
+<!-- Profile + Stats -->
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card glass-card">
+            <div class="card-body text-center">
+                <div
+                    style="width:80px;height:80px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:2rem;color:var(--accent);">
+                    <i class="bi bi-person-circle"></i>
+                </div>
+                <h5 id="profileName" class="mb-1">—</h5>
+                <p class="text-muted small mb-1" id="profileSid">—</p>
+                <p class="text-muted small" id="profileEmail">—</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="stat-card stat-card--primary">
+                <div class="stat-icon"><i class="bi bi-journal-text"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="sTotalClasses">--</span>
+                    <span class="stat-label">Total Logs</span>
+                </div>
+            </div>
+            <div class="stat-card stat-card--success">
+                <div class="stat-icon"><i class="bi bi-check-circle"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="sPresent">--</span>
+                    <span class="stat-label">Present</span>
+                </div>
+            </div>
+            <div class="stat-card stat-card--danger">
+                <div class="stat-icon"><i class="bi bi-x-circle"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="sAbsent">--</span>
+                    <span class="stat-label">Absent</span>
+                </div>
+            </div>
+            <div class="stat-card stat-card--info">
+                <div class="stat-icon"><i class="bi bi-percent"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="sRate">--</span>
+                    <span class="stat-label">Attendance %</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance Rate Bar -->
+<div class="card glass-card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between mb-1">
+            <small class="text-muted">Attendance Rate</small>
+            <small class="text-muted" id="rateLabel">0%</small>
+        </div>
+        <div class="progress" style="height:8px;background:rgba(255,255,255,0.06);border-radius:4px;">
+            <div class="progress-bar" id="rateBar" role="progressbar"
+                style="width:0%;background:var(--accent);border-radius:4px;transition:width 0.6s ease;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance History Table -->
+<div class="card glass-card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-clock-history"></i> Attendance History</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Date & Time</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTable">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const studentId = {{ student_id }};
+    const statusColors = {
+        'Present': 'bg-present', 'On Time': 'bg-ontime', 'Late': 'bg-late',
+        'Absent': 'bg-absent', 'Disappeared': 'bg-disappeared', 'Early Leave': 'bg-earlyleave',
+        'Permitted': 'bg-permitted', 'Excused': 'bg-excused'
+    };
+
+    fetch(`/api/students/${studentId}`).then(r => r.json()).then(data => {
+        if (data.error) { document.getElementById('studentName').textContent = 'Not Found'; return; }
+
+        document.getElementById('studentName').textContent = data.name;
+        document.getElementById('profileName').textContent = data.name;
+        document.getElementById('profileSid').textContent = data.student_id || 'No Student ID';
+        document.getElementById('profileEmail').textContent = data.email || 'No Email';
+
+        const s = data.stats;
+        document.getElementById('sTotalClasses').textContent = s.total_classes;
+        document.getElementById('sPresent').textContent = s.present;
+        document.getElementById('sAbsent').textContent = s.absent;
+        document.getElementById('sRate').textContent = s.attendance_rate + '%';
+        document.getElementById('rateLabel').textContent = s.attendance_rate + '%';
+        document.getElementById('rateBar').style.width = s.attendance_rate + '%';
+
+        // Color the bar based on rate
+        const bar = document.getElementById('rateBar');
+        if (s.attendance_rate >= 80) bar.style.background = 'var(--success)';
+        else if (s.attendance_rate >= 50) bar.style.background = '#f39c12';
+        else bar.style.background = 'var(--danger)';
+
+        // Render history
+        const tbody = document.getElementById('historyTable');
+        if (!data.recent_attendance.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No attendance records</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.recent_attendance.map((r, i) => {
+            const color = statusColors[r.status] || 'bg-secondary';
+            const dt = new Date(r.timestamp);
+            const dateStr = dt.toLocaleDateString('en-GB') + ' ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const srcIcon = r.source === 'ai' ? '<i class="bi bi-robot text-info"></i>' :
+                r.source === 'manual' ? '<i class="bi bi-pencil text-warning"></i>' :
+                    '<i class="bi bi-arrow-repeat text-danger"></i>';
+            return `<tr>
+            <td>${i + 1}</td>
+            <td class="text-muted small">${dateStr}</td>
+            <td><span class="badge ${color}">${r.status}</span></td>
+            <td>${srcIcon}</td>
+            <td class="text-muted small">${r.notes || '—'}</td>
+        </tr>`;
+        }).join('');
+    }).catch(() => {
+        document.getElementById('historyTable').innerHTML =
+            '<tr><td colspan="5" class="text-center text-danger py-4">Failed to load student data</td></tr>';
+    });
+</script>
+{% endblock %}

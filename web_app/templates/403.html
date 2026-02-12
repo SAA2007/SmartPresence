@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Access Denied - SmartPresence{% endblock %}
+{% block content %}
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height:60vh;">
+    <i class="bi bi-shield-x" style="font-size:4rem;color:var(--danger);opacity:0.6;"></i>
+    <h2 class="mt-3 mb-2">Access Denied</h2>
+    <p class="text-muted">You don't have permission to view this page.</p>
+    <a href="/" class="btn btn-accent mt-2"><i class="bi bi-house"></i> Back to Dashboard</a>
+</div>
+{% endblock %}

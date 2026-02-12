@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}Settings - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-gear"></i> Settings</h1>
+</div>
+
+<div class="row g-3">
+    <!-- AI Settings -->
+    <div class="col-md-6">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-cpu"></i> Recognition</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Detection Scale: <strong id="scaleValue">0.5x</strong></label>
+                    <input type="range" class="form-range" id="scaleSlider" min="0.25" max="1.0" step="0.25"
+                        value="0.5">
+                    <div class="form-text">Lower = faster. Higher = detects at distance.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tolerance: <strong id="toleranceValue">0.5</strong></label>
+                    <input type="range" class="form-range" id="toleranceSlider" min="0.3" max="0.8" step="0.05"
+                        value="0.5">
+                    <div class="form-text">Lower = stricter matching. Higher = more lenient.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Late Threshold: <strong id="lateValue">10</strong> min</label>
+                    <input type="range" class="form-range" id="lateSlider" min="1" max="30" step="1" value="10">
+                    <div class="form-text">Minutes after class start before marking as Late.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Disappear Threshold: <strong id="disappearValue">15</strong> min</label>
+                    <input type="range" class="form-range" id="disappearSlider" min="5" max="60" step="5" value="15">
+                    <div class="form-text">Minutes unseen before marking as Disappeared.</div>
+                </div>
+                <button class="btn btn-accent w-100" onclick="saveSettings()">
+                    <i class="bi bi-save"></i> Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Controls -->
+    <div class="col-md-6">
+        <div class="card glass-card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-toggles"></i> System Controls</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">System Mode</label>
+                    <div class="btn-group w-100">
+                        <button class="btn btn-outline-light mode-btn" onclick="setMode('auto')" data-mode="auto">
+                            <i class="bi bi-clock-history"></i> Auto (Schedule)
+                        </button>
+                        <button class="btn btn-outline-light mode-btn" onclick="setMode('force_on')"
+                            data-mode="force_on">
+                            <i class="bi bi-play-circle"></i> Force ON
+                        </button>
+                        <button class="btn btn-outline-light mode-btn" onclick="setMode('force_off')"
+                            data-mode="force_off">
+                            <i class="bi bi-stop-circle"></i> Force OFF
+                        </button>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-success flex-fill" onclick="systemAction('start')">
+                        <i class="bi bi-play-fill"></i> Start AI
+                    </button>
+                    <button class="btn btn-warning flex-fill" onclick="systemAction('restart')">
+                        <i class="bi bi-arrow-clockwise"></i> Restart
+                    </button>
+                    <button class="btn btn-danger flex-fill" onclick="systemAction('stop')">
+                        <i class="bi bi-stop-fill"></i> Stop AI
+                    </button>
+                </div>
+                <button class="btn btn-outline-danger w-100" onclick="shutdownServer()">
+                    <i class="bi bi-power"></i> Shutdown Server
+                </button>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Info</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted">AI Status</td>
+                        <td id="aiStatus">--</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Mode</td>
+                        <td id="sysMode">--</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Active Class</td>
+                        <td id="activeClass">--</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Students Loaded</td>
+                        <td id="studentsLoaded">--</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Frame Size</td>
+                        <td id="frameSize">--</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Class Schedule -->
+<div class="card glass-card mt-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-calendar-week"></i> Class Schedule / Timetable</h5>
+        <button class="btn btn-sm btn-accent" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+            <i class="bi bi-plus-circle"></i> Add Slot
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Day</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Class</th>
+                        <th>Active</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleTable">
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-3">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Schedule Modal -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:var(--bg-secondary);border:1px solid var(--border-color);">
+            <div class="modal-header border-0">
+                <h6 class="modal-title">Add Class Slot</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <select id="schedDay" class="form-select form-select-sm mb-2">
+                    <option value="">Select day...</option>
+                    <option>Monday</option>
+                    <option>Tuesday</option>
+                    <option>Wednesday</option>
+                    <option>Thursday</option>
+                    <option>Friday</option>
+                    <option>Saturday</option>
+                    <option>Sunday</option>
+                </select>
+                <div class="row g-2 mb-2">
+                    <div class="col"><input type="time" id="schedStart" class="form-control form-control-sm"
+                            placeholder="Start"></div>
+                    <div class="col"><input type="time" id="schedEnd" class="form-control form-control-sm"
+                            placeholder="End"></div>
+                </div>
+                <input type="text" id="schedName" class="form-control form-control-sm mb-2"
+                    placeholder="Class name (e.g. Math 101)">
+                <button class="btn btn-accent btn-sm w-100" onclick="addSchedule()">
+                    <i class="bi bi-plus-circle"></i> Add Slot
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if session.get('role') == 'admin' %}
+<!-- ══════ Admin Configuration (PIN-gated) ══════ -->
+<div class="card glass-card mt-3" id="adminConfigSection">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Admin Configuration</h5>
+        <span class="badge bg-danger">Admin Only</span>
+    </div>
+    <div class="card-body">
+        <!-- PIN Gate -->
+        <div id="pinGate">
+            <p class="text-muted small">Enter the Settings PIN to access environment variables and system configuration.
+            </p>
+            <div class="input-group" style="max-width:300px;">
+                <input type="password" id="settingsPin" class="form-control" placeholder="Settings PIN" maxlength="10">
+                <button class="btn btn-accent" onclick="unlockConfig()">
+                    <i class="bi bi-unlock"></i> Unlock
+                </button>
+            </div>
+        </div>
+
+        <!-- Config Panel (hidden until PIN verified) -->
+        <div id="configPanel" style="display:none;">
+            <div class="row g-3">
+                <!-- Telegram Config -->
+                <div class="col-md-6">
+                    <div class="card" style="background:var(--bg-primary);border:1px solid var(--border-color);">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-telegram"></i> Telegram Integration</h6>
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">Bot Token</label>
+                                <input type="text" id="cfgTelegramToken" class="form-control form-control-sm"
+                                    placeholder="e.g. 123456:ABC-DEF...">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">Chat ID</label>
+                                <input type="text" id="cfgTelegramChat" class="form-control form-control-sm"
+                                    placeholder="e.g. -1001234567890">
+                            </div>
+                            <button class="btn btn-sm btn-accent w-100" onclick="saveConfigGroup('telegram')">
+                                <i class="bi bi-save"></i> Save Telegram
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Config -->
+                <div class="col-md-6">
+                    <div class="card" style="background:var(--bg-primary);border:1px solid var(--border-color);">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-key"></i> Security</h6>
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">Settings PIN</label>
+                                <input type="password" id="cfgSettingsPin" class="form-control form-control-sm"
+                                    placeholder="Enter new PIN">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">Secret Key</label>
+                                <input type="password" id="cfgSecretKey" class="form-control form-control-sm"
+                                    placeholder="Flask session secret">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small text-muted">DB Encryption Key</label>
+                                <input type="password" id="cfgEncryptionKey" class="form-control form-control-sm"
+                                    placeholder="Database encryption key">
+                            </div>
+                            <button class="btn btn-sm btn-accent w-100" onclick="saveConfigGroup('security')">
+                                <i class="bi bi-save"></i> Save Security
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Utilities -->
+                <div class="col-12">
+                    <div class="card" style="background:var(--bg-primary);border:1px solid var(--border-color);">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-tools"></i> Utilities</h6>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="/api/config/export-db" class="btn btn-outline-light btn-sm">
+                                    <i class="bi bi-download"></i> Backup Database
+                                </a>
+                                <a href="/api/export?format=xlsx" class="btn btn-outline-light btn-sm">
+                                    <i class="bi bi-file-earmark-spreadsheet"></i> Export Attendance
+                                </a>
+                                <button class="btn btn-outline-info btn-sm" onclick="loadVersion()">
+                                    <i class="bi bi-info-circle"></i> Version Info
+                                </button>
+                            </div>
+                            <div id="versionInfo" class="mt-2 small text-muted" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── Load Settings ──
+    function loadSettings() {
+        fetch('/api/settings').then(r => r.json()).then(data => {
+            document.getElementById('scaleSlider').value = data.detection_scale;
+            document.getElementById('scaleValue').textContent = data.detection_scale + 'x';
+            document.getElementById('toleranceSlider').value = data.tolerance;
+            document.getElementById('toleranceValue').textContent = data.tolerance;
+            document.getElementById('lateSlider').value = data.late_threshold;
+            document.getElementById('lateValue').textContent = data.late_threshold;
+            document.getElementById('disappearSlider').value = data.disappear_threshold;
+            document.getElementById('disappearValue').textContent = data.disappear_threshold;
+            document.getElementById('frameSize').textContent = data.frame_width + '×' + data.frame_height;
+
+            // Update mode buttons
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`[data-mode="${data.system_mode}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+        });
+    }
+
+    // ── Load System Status ──
+    function loadSystemInfo() {
+        fetch('/api/system/status').then(r => r.json()).then(data => {
+            document.getElementById('aiStatus').innerHTML = data.ai_running
+                ? '<span class="text-success"><i class="bi bi-circle-fill"></i> Running</span>'
+                : '<span class="text-danger"><i class="bi bi-circle-fill"></i> Stopped</span>';
+            document.getElementById('sysMode').textContent = { auto: 'Auto (Schedule)', force_on: 'Force ON', force_off: 'Force OFF' }[data.system_mode] || data.system_mode;
+            document.getElementById('activeClass').textContent = data.active_schedule ? data.active_schedule.class_name : 'None';
+            document.getElementById('studentsLoaded').textContent = data.students_loaded;
+        });
+    }
+
+    // Slider labels
+    ['scaleSlider:scaleValue:x', 'toleranceSlider:toleranceValue:', 'lateSlider:lateValue:', 'disappearSlider:disappearValue:'].forEach(s => {
+        const [id, label, suffix] = s.split(':');
+        document.getElementById(id)?.addEventListener('input', function () {
+            document.getElementById(label).textContent = this.value + suffix;
+        });
+    });
+
+    function saveSettings() {
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                detection_scale: parseFloat(document.getElementById('scaleSlider').value),
+                tolerance: parseFloat(document.getElementById('toleranceSlider').value),
+                late_threshold: parseInt(document.getElementById('lateSlider').value),
+                disappear_threshold: parseInt(document.getElementById('disappearSlider').value)
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.success) showToast('Settings saved!', 'success');
+        });
+    }
+
+    // ── System Controls ──
+    function setMode(mode) {
+        fetch('/api/system', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'set_mode', mode: mode })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showToast('Mode: ' + mode, 'success');
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                document.querySelector(`[data-mode="${mode}"]`)?.classList.add('active');
+                loadSystemInfo();
+            }
+        });
+    }
+
+    function systemAction(action) {
+        fetch('/api/system', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action })
+        }).then(r => r.json()).then(data => {
+            showToast(data.message || 'Done');
+            setTimeout(loadSystemInfo, 1000);
+        });
+    }
+
+    function shutdownServer() {
+        if (!confirm('⚠️ This will shut down the entire server. Are you sure?')) return;
+        systemAction('shutdown');
+    }
+
+    // ── Schedule ──
+    function loadSchedule() {
+        fetch('/api/schedule').then(r => r.json()).then(data => {
+            const tbody = document.getElementById('scheduleTable');
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No schedule defined. Add class slots above.</td></tr>';
+                return;
+            }
+            const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            data.sort((a, b) => dayOrder.indexOf(a.day_of_week) - dayOrder.indexOf(b.day_of_week) || a.start_time.localeCompare(b.start_time));
+
+            tbody.innerHTML = data.map(s => `
+            <tr>
+                <td><strong>${s.day_of_week}</strong></td>
+                <td>${s.start_time}</td>
+                <td>${s.end_time}</td>
+                <td>${s.class_name}</td>
+                <td>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" ${s.is_active ? 'checked' : ''} 
+                               onchange="toggleSchedule(${s.id}, this.checked)">
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-outline-danger btn-xs" onclick="deleteSchedule(${s.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+        });
+    }
+
+    function addSchedule() {
+        const day = document.getElementById('schedDay').value;
+        const start = document.getElementById('schedStart').value;
+        const end = document.getElementById('schedEnd').value;
+        const name = document.getElementById('schedName').value.trim() || 'Class';
+
+        if (!day || !start || !end) { showToast('Fill in all fields', 'warning'); return; }
+
+        fetch('/api/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ day_of_week: day, start_time: start, end_time: end, class_name: name })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showToast('Schedule slot added!', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('addScheduleModal')).hide();
+                loadSchedule();
+            }
+        });
+    }
+
+    function toggleSchedule(id, active) {
+        fetch(`/api/schedule/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_active: active ? 1 : 0 })
+        }).then(r => r.json()).then(data => {
+            if (data.success) showToast(active ? 'Slot enabled' : 'Slot disabled', 'success');
+        });
+    }
+
+    function deleteSchedule(id) {
+        if (!confirm('Delete this schedule slot?')) return;
+        fetch(`/api/schedule/${id}`, { method: 'DELETE' }).then(r => r.json()).then(() => {
+            showToast('Slot deleted', 'success');
+            loadSchedule();
+        });
+    }
+
+    // ── Admin Config (PIN-gated) ──
+    function unlockConfig() {
+        const pin = document.getElementById('settingsPin').value;
+        if (!pin) { showToast('Enter PIN', 'warning'); return; }
+        fetch('/api/auth/verify-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: pin })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                document.getElementById('pinGate').style.display = 'none';
+                document.getElementById('configPanel').style.display = 'block';
+                showToast('Config unlocked', 'success');
+                loadConfig();
+            } else {
+                showToast(data.error || 'Invalid PIN', 'error');
+            }
+        });
+    }
+
+    function loadConfig() {
+        fetch('/api/config').then(r => r.json()).then(data => {
+            if (data.config) {
+                const c = data.config;
+                document.getElementById('cfgTelegramToken').value = c.TELEGRAM_BOT_TOKEN || '';
+                document.getElementById('cfgTelegramChat').value = c.TELEGRAM_CHAT_ID || '';
+                document.getElementById('cfgSettingsPin').placeholder = c.SETTINGS_PIN ? `Current: ${c.SETTINGS_PIN}` : 'Set PIN';
+                document.getElementById('cfgSecretKey').placeholder = c.SECRET_KEY ? `Current: ${c.SECRET_KEY}` : 'Set key';
+                document.getElementById('cfgEncryptionKey').placeholder = c.DB_ENCRYPTION_KEY ? `Current: ${c.DB_ENCRYPTION_KEY}` : 'Set key';
+            }
+        }).catch(() => { });
+    }
+
+    function saveConfigGroup(group) {
+        let updates = {};
+        if (group === 'telegram') {
+            const token = document.getElementById('cfgTelegramToken').value.trim();
+            const chat = document.getElementById('cfgTelegramChat').value.trim();
+            if (token) updates.TELEGRAM_BOT_TOKEN = token;
+            if (chat) updates.TELEGRAM_CHAT_ID = chat;
+        } else if (group === 'security') {
+            const pin = document.getElementById('cfgSettingsPin').value.trim();
+            const secret = document.getElementById('cfgSecretKey').value.trim();
+            const enc = document.getElementById('cfgEncryptionKey').value.trim();
+            if (pin) updates.SETTINGS_PIN = pin;
+            if (secret) updates.SECRET_KEY = secret;
+            if (enc) updates.DB_ENCRYPTION_KEY = enc;
+        }
+        if (Object.keys(updates).length === 0) { showToast('Nothing to save — fill in at least one field', 'warning'); return; }
+
+        fetch('/api/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates: updates })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                loadConfig();
+                // Clear password fields after save
+                if (group === 'security') {
+                    document.getElementById('cfgSettingsPin').value = '';
+                    document.getElementById('cfgSecretKey').value = '';
+                    document.getElementById('cfgEncryptionKey').value = '';
+                }
+            } else {
+                showToast(data.error || 'Failed', 'error');
+            }
+        });
+    }
+
+    function loadVersion() {
+        fetch('/api/config/version').then(r => r.json()).then(data => {
+            const el = document.getElementById('versionInfo');
+            el.style.display = 'block';
+            el.innerHTML = `<strong>v${data.version}</strong> · Phase ${data.phase} · ${data.codename} · Built ${data.build_date}`;
+        });
+    }
+
+    // Allow Enter key on PIN input
+    document.getElementById('settingsPin')?.addEventListener('keypress', e => {
+        if (e.key === 'Enter') unlockConfig();
+    });
+
+    // Init
+    loadSettings();
+    loadSystemInfo();
+    loadSchedule();
+    setInterval(loadSystemInfo, 5000);
+</script>
+{% endblock %}

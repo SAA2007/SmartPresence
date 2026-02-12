@@ -1,0 +1,54 @@
+# ═══════════════════════════════════════════
+#  SmartPresence .gitignore
+# ═══════════════════════════════════════════
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual Environment ──
+venv/
+env/
+.Python
+
+# ── Environment Config (SENSITIVE) ──
+.env
+
+# ── Database ──
+*.db
+*.sqlite3
+
+# ── Large Library / Model Dirs ──
+dlib/
+face_recognition_models/
+temp_models/
+
+# ── AI Module Data ──
+ai_module/encodings.pickle
+ai_module/known_faces/
+
+# ── Logs & Reports ──
+antigravity.log
+crash_reports/
+
+# ── OS Files ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Agent Working Dirs ──
+.agent/
