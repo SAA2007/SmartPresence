@@ -13,6 +13,7 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 2. **Recognizes** enrolled students by comparing face encodings
 3. **Logs** attendance automatically (Present / Late / Absent / Disappeared)
 4. **Provides** a web dashboard for teachers to monitor, manage, and export data
+5. **Emails** per-class reports to students and teachers via Brevo SMTP
 
 ---
 
@@ -37,9 +38,10 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 | Module | Path | Purpose |
 |--------|------|---------|
 | **AI Engine** | `ai_module/` | Face detection, recognition, liveness check, centroid tracking |
-| **Web Backend** | `web_app/routes/` | REST API (45 endpoints), authentication, data management |
-| **Frontend** | `web_app/templates/` | Dashboard, Live View, Student Management, Settings, Reports |
-| **Database** | `web_app/database/` | SQLite schema + initialization script |
+| **Web Backend** | `web_app/routes/` | REST API (47+ endpoints), authentication, data management |
+| **Email Service** | `web_app/email_service.py` | SMTP email reports (student + teacher + admin) |
+| **Frontend** | `web_app/templates/` | 15 HTML pages — Dashboard, Timetable, Enrollment, Settings, etc. |
+| **Database** | `web_app/database/` | SQLite schema + initialization + migrations |
 
 ---
 
@@ -57,21 +59,36 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 - Automatic status tagging: `Present`, `Late`, `Absent`, `Disappeared`
 - Per-student profile with attendance statistics and history
 - Class schedule integration (auto start/stop AI per timetable)
+- Student self-lookup page (public, no login required)
+- Teacher 7-day edit limit on attendance overrides
 - Excel export (.xlsx) and database backup
+
+### Email Reports (Brevo SMTP)
+
+- **Student emails** — individual attendance status after each class
+- **Teacher summary** — per-class overview with present/absent counts and student lists
+- **Admin error reports** — automatic bug/crash notifications
+- One-click "Send Report" button on the Timetable page
+- SMTP test button in Settings for easy verification
 
 ### Security & Authentication
 
 - Multi-user login system (Admin + Teacher roles)
+- CSRF protection on all endpoints
 - Password hashing with Werkzeug (bcrypt-based)
 - Settings PIN gate for sensitive configuration
 - Session-based auth with role-based access control
+- All credentials stored in `.env` (gitignored — never pushed to GitHub)
+- XSS mitigation via `escapeHtml()` on all user-facing outputs
+- Parameterized SQL queries (no raw string concatenation)
 
 ### Admin Dashboard
 
 - Real-time system status monitoring
-- In-app configuration editor (Telegram tokens, security keys)
+- In-app configuration editor (Telegram tokens, security keys, email test)
 - Crash reporting system (local save + Telegram forwarding)
 - System controls (Start/Stop/Restart AI, mode switching)
+- Secret debug page for diagnostics (admin only)
 
 ---
 
@@ -87,6 +104,7 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 | **Database** | SQLite | Zero-config, file-based relational DB |
 | **Frontend** | Bootstrap 5 + Chart.js | Responsive UI with live charts |
 | **Auth** | Werkzeug + Flask Sessions | Secure password hashing + session management |
+| **Email** | Brevo SMTP (smtp-relay.brevo.com) | Transactional email delivery |
 | **Config** | python-dotenv | Environment variable management |
 | **Reporting** | openpyxl | Excel file generation |
 
@@ -104,7 +122,7 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/SmartPresence.git
+git clone https://github.com/SAA2007/SmartPresence.git
 cd SmartPresence
 
 # 2. Create virtual environment (recommended)
@@ -118,7 +136,7 @@ pip install -r requirements.txt
 # 4. Configure environment
 copy .env.example .env   # Windows
 # cp .env.example .env   # Linux/Mac
-# Edit .env with your values
+# Edit .env with your values (SMTP keys, admin password, etc.)
 
 # 5. Initialize the database
 python -c "from web_app.database.init_db import init_db; init_db()"
@@ -139,6 +157,8 @@ Open **<http://localhost:5000>** in your browser.
 | Password | `admin123` |
 | Settings PIN | `1234` |
 
+> 🔒 **Important**: Change these defaults immediately after first login. On a deployed school system, all credentials live in the `.env` file which is **never** pushed to GitHub.
+
 ---
 
 ## 📁 Project Structure
@@ -154,21 +174,29 @@ SmartPresence/
 │   ├── app.py                  # Entry point, app factory
 │   ├── config.py               # Camera resolution settings
 │   ├── video_stream.py         # Video stream manager (start/stop)
+│   ├── email_service.py        # SMTP email sender (Brevo)
 │   ├── database/
 │   │   ├── schema.sql          # Database schema (6 tables)
 │   │   └── init_db.py          # DB init + migration + admin seed
 │   ├── routes/
-│   │   ├── api.py              # REST API (45 endpoints)
+│   │   ├── api.py              # REST API (47+ endpoints)
 │   │   └── views.py            # Page routes + auth decorators
-│   ├── templates/              # HTML pages (11 templates)
+│   ├── templates/              # HTML pages (15 templates)
 │   │   ├── base.html           # Layout + sidebar + global JS
 │   │   ├── login.html          # Login page
 │   │   ├── dashboard.html      # Main dashboard
 │   │   ├── students.html       # Student management
 │   │   ├── student_detail.html # Per-student profile
+│   │   ├── enroll.html         # Face enrollment wizard
+│   │   ├── live.html           # Real-time camera view
+│   │   ├── timetable.html      # Class timetable + email reports
 │   │   ├── settings.html       # System settings + admin config
 │   │   ├── report.html         # Crash/issue reporting
-│   │   └── ...                 # enrollment, live view, users, 403
+│   │   ├── users.html          # User management (admin)
+│   │   ├── lookup.html         # Student self-lookup (public)
+│   │   ├── debug.html          # System diagnostics (admin)
+│   │   ├── 403.html            # Forbidden error page
+│   │   └── attendance.html     # Attendance log viewer
 │   └── static/
 │       ├── css/style.css       # Dark theme + glassmorphism
 │       └── js/dashboard.js     # Chart.js dashboard logic
@@ -186,27 +214,32 @@ SmartPresence/
 
 ```
 students          → id, name, student_id, email, encoding
-attendance_logs   → id, student_id, timestamp, status, source, notes
-class_schedules   → id, day_of_week, start_time, end_time, class_name, is_active
+attendance_logs   → id, student_id, timestamp, status, source, notes, schedule_id
+class_schedules   → id, day_of_week, start_time, end_time, class_name, teacher_email, is_active
 users             → id, username, display_name, password_hash, role
-crash_reports     → stored as JSON files
+settings          → key, value (app configuration)
+cameras           → id, name, source, is_active
 ```
 
 ---
 
-## 🔌 API Endpoints (45 total)
+## 🔌 API Endpoints (47+)
 
 | Category | Endpoints | Auth |
 |----------|-----------|------|
 | **Auth** | `/api/auth/login`, `/logout`, `/me`, `/verify-pin` | Public / Login |
 | **Students** | `/api/students` (CRUD), `/api/students/<id>` | Login |
+| **Enrollment** | `/api/enroll` (POST with face capture) | Login |
 | **Attendance** | `/api/attendance`, `/api/stats`, `/api/export` | Login |
 | **Schedule** | `/api/schedule` (CRUD) | Login |
 | **System** | `/api/system` (start/stop/restart/shutdown) | Login/Admin |
 | **Users** | `/api/users` (CRUD) | Admin |
 | **Config** | `/api/config` (GET/PUT), `/api/config/export-db` | Admin + PIN |
 | **Settings** | `/api/settings` (GET/POST) | Login |
+| **Email** | `/api/email/test`, `/api/email/class-report/<id>` | Admin / Login |
 | **Reports** | `/api/report` (POST) | Login |
+| **Lookup** | `/api/lookup` (POST) | Public |
+| **Debug** | `/api/debug` (GET) | Admin |
 
 ---
 
@@ -228,6 +261,16 @@ Student Detected → Check Schedule → Is class active?
     → YES: Mark PRESENT (or LATE if > threshold minutes)
     → Student disappears for > threshold: Mark DISAPPEARED
     → End of class + not seen: Mark ABSENT
+```
+
+### Email Report Flow
+
+```
+Teacher clicks "Report" on Timetable page
+    → System queries today's attendance for that class
+    → Each student gets an individual status email
+    → Teacher gets a summary (present count, absent count, names)
+    → Any send failures are reported to admin email
 ```
 
 ### Liveness Detection (Anti-Spoofing)
@@ -261,11 +304,11 @@ Face Detected → MediaPipe Face Mesh (468 landmarks)
 
 ### "How does the scheduling system work?"
 >
-> Teachers define class timetables (day, start time, end time) through the Settings page. When the system is in **Auto mode**, it checks the schedule every minute. If the current time falls within a class slot, the AI engine starts automatically. When the class ends, it stops. Teachers can also use **Force ON/OFF** to override the schedule.
+> Teachers define class timetables (day, start time, end time) through the Timetable page. Each class can have a teacher email assigned for report delivery. When the system is in **Auto mode**, it checks the schedule every minute. If the current time falls within a class slot, the AI engine starts automatically. When the class ends, it stops. Teachers can also use **Force ON/OFF** to override the schedule.
 
 ### "How is security handled?"
 >
-> Three layers: (1) **Login authentication** with hashed passwords (Werkzeug/bcrypt), (2) **Role-based access control** (Admin vs Teacher — admins can manage users and config, teachers can only view), (3) **Settings PIN** — sensitive configuration like API keys requires an additional PIN verification beyond being logged in as admin.
+> Multiple layers: (1) **Login authentication** with hashed passwords (Werkzeug/bcrypt), (2) **Role-based access control** (Admin vs Teacher — admins can manage users and config, teachers can only view/operate), (3) **Settings PIN** — sensitive configuration requires additional PIN verification, (4) **CSRF protection** on all form submissions, (5) **All credentials** stored in `.env` which is gitignored — deployed systems have unique passwords that never appear in the source code.
 
 ### "What happens if the camera disconnects?"
 >
@@ -302,6 +345,6 @@ This project was built for academic purposes.
 
 - [ ] Multi-camera support
 - [ ] Database encryption (SQLCipher / Fernet)
-- [ ] Notification system (email/SMS when student is absent)
+- [ ] SMS notifications (WhatsApp/Telegram alerts for absences)
 - [ ] Mobile app for students to view their own attendance
 - [ ] GPU-accelerated CNN face detection
