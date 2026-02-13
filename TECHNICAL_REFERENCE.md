@@ -382,8 +382,8 @@ This is the **main AI engine class**. One instance runs per server process.
 | `determine_status(schedule)` | Compares current time vs schedule start time. Returns `'On Time'`, `'Late'`, or `'Present'` |
 | `log_attendance(name)` | Inserts attendance record into DB. Skips if already logged today. Links to active schedule |
 | `check_disappearances()` | Every `RECHECK_INTERVAL` seconds, checks `last_seen` dict. If a student unseen for > `DISAPPEAR_THRESHOLD` minutes, logs "Disappeared" |
-| `maybe_reset_session(schedule)` | Detects when schedule changes (new class starts). Resets `today_logged` and tracking state |
-| `ai_loop()` | **Main loop**: capture frame → detect → encode → match → track → log. Runs until `self.running = False` |
+| `maybe_reset_session(schedule)` | Detects when schedule changes (new class starts). Resets `session_logged` and tracking state |
+| `ai_loop()` | **Main loop**: capture frame → detect → encode → match → track → log. Runs until `self.is_running = False` |
 | `start()` | Starts the AI loop in a background thread |
 
 ---
@@ -985,8 +985,8 @@ For a larger system with OAuth, social login, or JWT tokens, Flask-Login (or Fla
 |---------------|-------|-----|
 | **List** (Python) | `known_encodings` | Ordered collection of face vectors. Index corresponds to `known_names[i]` |
 | **NumPy ndarray** (128-dim) | Face encodings | Fixed-size float64 vector. Efficient for vectorized distance computation |
-| **Set** (Python) | `today_logged` | O(1) lookup for "has this student been logged today?" |
-| **Dict** (Python) | `last_seen`, `tracker_positions` | O(1) lookup by student name for tracking state |
+| **Set-like Dict** (Python) | `session_logged` | O(1) lookup for "has this student been logged this session?" |
+| **Dict** (Python) | `last_seen` | O(1) lookup by student name for disappearance tracking |
 | **B-tree** (SQLite index) | Database indexes | O(log n) lookup for attendance queries |
 | **Key-value store** | `settings` table | O(1) lookup for configuration values |
 
@@ -1033,7 +1033,7 @@ For a multi-campus deployment, we'd switch to UTC timestamps in the database and
 - **`force_on`**: Always logs attendance regardless of schedule
 - **`force_off`**: AI loop runs but doesn't process frames
 
-When a **new schedule starts** (different `schedule_id`), `maybe_reset_session()` clears `today_logged` so students can be re-logged for the new class.
+When a **new schedule starts** (different `schedule_id`), `maybe_reset_session()` clears `session_logged` so students can be re-logged for the new class.
 
 ---
 
