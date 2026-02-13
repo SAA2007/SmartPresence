@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS class_schedules (
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     class_name TEXT NOT NULL DEFAULT 'Class',
+    teacher_email TEXT DEFAULT '',
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

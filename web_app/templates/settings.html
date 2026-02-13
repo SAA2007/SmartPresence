@@ -253,6 +253,23 @@
                     </div>
                 </div>
 
+                <!-- Email Config -->
+                <div class="col-md-6">
+                    <div class="card" style="background:var(--bg-primary);border:1px solid var(--border-color);">
+                        <div class="card-body">
+                            <h6 class="mb-3"><i class="bi bi-envelope"></i> Email (SMTP)</h6>
+                            <p class="small text-muted mb-2">
+                                SMTP is configured via <code>.env</code> file.
+                                Use the button below to verify your setup.
+                            </p>
+                            <div id="emailStatus" class="mb-2"></div>
+                            <button class="btn btn-sm btn-accent w-100" id="emailTestBtn" onclick="testEmail()">
+                                <i class="bi bi-envelope-check"></i> Send Test Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Utilities -->
                 <div class="col-12">
                     <div class="card" style="background:var(--bg-primary);border:1px solid var(--border-color);">
@@ -584,6 +601,31 @@
     loadSystemInfo();
     loadSchedule();
     setInterval(loadSystemInfo, 5000);
+
+    // Email test
+    function testEmail() {
+        const btn = document.getElementById('emailTestBtn');
+        const status = document.getElementById('emailStatus');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
+        status.innerHTML = '';
+        safeFetch('/api/email/test', { method: 'POST' }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            if (data.success) {
+                status.innerHTML = '<div class="alert alert-success py-1 px-2 small mb-0"><i class="bi bi-check-circle"></i> ' + escapeHtml(data.message) + '</div>';
+            } else {
+                status.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0"><i class="bi bi-x-circle"></i> ' + escapeHtml(data.error) + '</div>';
+            }
+        }).catch(() => {
+            status.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0"><i class="bi bi-x-circle"></i> Failed to send test email</div>';
+        }).finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-envelope-check"></i> Send Test Email';
+        });
+    }
 
     // Easter egg: 18 clicks on gear icon → debug page
     (function () {

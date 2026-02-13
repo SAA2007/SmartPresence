@@ -14,12 +14,13 @@
                         <th>Day</th>
                         <th>Time</th>
                         <th>Class</th>
+                        <th>Teacher Email</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody id="timetableBody">
                     <tr>
-                        <td colspan="4" class="text-center text-muted py-4">Loading...</td>
+                        <td colspan="5" class="text-center text-muted py-4">Loading...</td>
                     </tr>
                 </tbody>
             </table>
@@ -63,6 +64,11 @@
                     <label class="form-label">Class Name</label>
                     <input type="text" id="schedName" class="form-control" placeholder="e.g. Mathematics 101">
                 </div>
+                <div class="mb-3">
+                    <label class="form-label">Teacher Email</label>
+                    <input type="email" id="schedTeacherEmail" class="form-control" placeholder="teacher@example.com">
+                    <small class="text-muted">Teacher receives class summary report via email</small>
+                </div>
             </div>
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -74,7 +80,7 @@
     </div>
 </div>
 
-<div class="mt-3">
+<div class="mt-3 d-flex gap-2">
     <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
         <i class="bi bi-plus-circle"></i> Add Class
     </button>
@@ -93,14 +99,18 @@
             if (!data) return;
             const tbody = document.getElementById('timetableBody');
             if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No classes scheduled</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No classes scheduled</td></tr>';
                 return;
             }
             tbody.innerHTML = data.map(s => `<tr>
                 <td><span class="badge bg-secondary">${escapeHtml(s.day_of_week)}</span></td>
                 <td>${escapeHtml(s.start_time)} — ${escapeHtml(s.end_time)}</td>
                 <td>${escapeHtml(s.class_name || 'Class')}</td>
-                <td>
+                <td>${s.teacher_email ? escapeHtml(s.teacher_email) : '<span class="text-muted">—</span>'}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-info me-1" onclick="sendClassReport(${s.id}, '${escapeHtml(s.class_name)}')" title="Send class report emails">
+                        <i class="bi bi-envelope"></i> Report
+                    </button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteSchedule(${s.id})">
                         <i class="bi bi-trash"></i>
                     </button>
@@ -116,6 +126,7 @@
         const start = document.getElementById('schedStart').value;
         const end = document.getElementById('schedEnd').value;
         const name = document.getElementById('schedName').value.trim() || 'Class';
+        const teacherEmail = document.getElementById('schedTeacherEmail').value.trim();
 
         if (!day || !start || !end) {
             showToast('Day, start time, and end time are required');
@@ -125,7 +136,10 @@
         safeFetch('/api/schedule', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ day_of_week: day, start_time: start, end_time: end, class_name: name })
+            body: JSON.stringify({
+                day_of_week: day, start_time: start, end_time: end,
+                class_name: name, teacher_email: teacherEmail
+            })
         }).then(r => {
             if (!r) return;
             return r.json();
@@ -138,6 +152,7 @@
                 document.getElementById('schedStart').value = '';
                 document.getElementById('schedEnd').value = '';
                 document.getElementById('schedName').value = '';
+                document.getElementById('schedTeacherEmail').value = '';
                 loadTimetable();
             }
         }).catch(() => {
@@ -157,6 +172,37 @@
             }
         }).catch(() => {
             showToast('Failed to delete', 'error');
+        });
+    }
+
+    function sendClassReport(scheduleId, className) {
+        if (!confirm(`Send attendance report for "${className}"?\n\n• Each student will be emailed their status\n• Teacher will receive a class summary`)) return;
+
+        const btn = event.target.closest('button');
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
+        btn.disabled = true;
+
+        safeFetch('/api/email/class-report/' + scheduleId, { method: 'POST' }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            if (data.success) {
+                showToast(
+                    `Report sent! ${data.students_emailed} students emailed, ` +
+                    `${data.present} present / ${data.absent} absent` +
+                    (data.teacher_emailed ? ', teacher notified' : ''),
+                    'success'
+                );
+            } else {
+                showToast(data.error || 'Failed to send report', 'error');
+            }
+        }).catch(() => {
+            showToast('Failed to send report', 'error');
+        }).finally(() => {
+            btn.innerHTML = origHtml;
+            btn.disabled = false;
         });
     }
 

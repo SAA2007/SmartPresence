@@ -697,6 +697,7 @@ def add_schedule():
     start = data.get('start_time', '').strip()
     end = data.get('end_time', '').strip()
     name = data.get('class_name', 'Class').strip()
+    teacher_email = data.get('teacher_email', '').strip()
 
     if not all([day, start, end]):
         return jsonify({"error": "day_of_week, start_time, end_time are required"}), 400
@@ -710,8 +711,8 @@ def add_schedule():
         return jsonify({"error": "End time must be after start time"}), 400
 
     conn = get_db()
-    conn.execute("INSERT INTO class_schedules (day_of_week, start_time, end_time, class_name) VALUES (?, ?, ?, ?)",
-                 (day, start, end, name))
+    conn.execute("INSERT INTO class_schedules (day_of_week, start_time, end_time, class_name, teacher_email) VALUES (?, ?, ?, ?, ?)",
+                 (day, start, end, name, teacher_email))
     conn.commit()
     conn.close()
     return jsonify({"success": True}), 201
@@ -728,11 +729,12 @@ def update_schedule(sid):
         conn.close()
         return jsonify({"error": "Schedule not found"}), 404
 
-    conn.execute("UPDATE class_schedules SET day_of_week=?, start_time=?, end_time=?, class_name=?, is_active=? WHERE id=?",
+    conn.execute("UPDATE class_schedules SET day_of_week=?, start_time=?, end_time=?, class_name=?, teacher_email=?, is_active=? WHERE id=?",
                  (data.get('day_of_week', sched['day_of_week']),
                   data.get('start_time', sched['start_time']),
                   data.get('end_time', sched['end_time']),
                   data.get('class_name', sched['class_name']),
+                  data.get('teacher_email', sched['teacher_email'] if 'teacher_email' in sched.keys() else ''),
                   data.get('is_active', sched['is_active']),
                   sid))
     conn.commit()
@@ -1469,4 +1471,113 @@ def debug_info():
             "camera_source": getattr(video_stream, 'camera_source', 'unknown')
         },
         "version": "1.6.0"
+    })
+
+
+# ══════════════════════════════════════════════════════
+#  EMAIL — Test & Class Reports
+# ══════════════════════════════════════════════════════
+
+@api_bp.route('/email/test', methods=['POST'])
+@api_admin_required
+def email_test():
+    """Send a test email to verify SMTP configuration."""
+    from web_app.email_service import send_test_email
+    success, error = send_test_email()
+    if success:
+        return jsonify({"success": True, "message": "Test email sent successfully"})
+    return jsonify({"error": error}), 500
+
+
+@api_bp.route('/email/class-report/<int:schedule_id>', methods=['POST'])
+@api_login_required
+def email_class_report(schedule_id):
+    """Send per-class attendance report: individual emails to students, summary to teacher."""
+    from web_app.email_service import send_student_report, send_teacher_summary, send_error_report
+    from datetime import datetime, timedelta
+
+    conn = get_db()
+
+    # Get the schedule
+    sched = conn.execute("SELECT * FROM class_schedules WHERE id = ?", (schedule_id,)).fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"error": "Schedule not found"}), 404
+
+    class_name = sched['class_name']
+    teacher_email = sched['teacher_email'] if 'teacher_email' in sched.keys() else ''
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # Get all attendance logs for today linked to this schedule
+    logs = conn.execute("""
+        SELECT al.*, s.name, s.email as student_email, s.student_id as sid
+        FROM attendance_logs al
+        JOIN students s ON al.student_id = s.id
+        WHERE al.schedule_id = ? AND date(al.timestamp) = ?
+    """, (schedule_id, today)).fetchall()
+
+    # Get ALL enrolled students to determine who's absent
+    all_students = conn.execute("SELECT id, name, email FROM students").fetchall()
+    conn.close()
+
+    # Build present/absent lists
+    present_ids = set()
+    present_list = []
+    absent_list = []
+    student_statuses = {}  # id -> (name, email, status)
+
+    for log in logs:
+        sid = log['student_id']
+        present_ids.add(sid)
+        status = log['status']
+        student_statuses[sid] = (log['name'], log['student_email'], status)
+        if status in ('Present', 'On Time', 'Late'):
+            present_list.append(log['name'])
+        else:
+            absent_list.append(log['name'])
+
+    # Students with no log at all = Absent
+    for s in all_students:
+        if s['id'] not in present_ids:
+            absent_list.append(s['name'])
+            student_statuses[s['id']] = (s['name'], s['email'], 'Absent')
+
+    # Send individual student emails
+    sent_count = 0
+    fail_count = 0
+    errors = []
+
+    for sid, (name, email, status) in student_statuses.items():
+        if email:
+            ok, err = send_student_report(email, name, class_name, status, today)
+            if ok:
+                sent_count += 1
+            else:
+                fail_count += 1
+                errors.append(f"{name}: {err}")
+
+    # Send teacher summary
+    teacher_sent = False
+    if teacher_email:
+        ok, err = send_teacher_summary(teacher_email, class_name, today, present_list, absent_list)
+        teacher_sent = ok
+        if not ok:
+            errors.append(f"Teacher: {err}")
+
+    # If any errors, send error report to admin
+    if errors:
+        send_error_report(
+            f"Email Report Errors — {class_name}",
+            '\n'.join(errors)
+        )
+
+    return jsonify({
+        "success": True,
+        "class_name": class_name,
+        "date": today,
+        "students_emailed": sent_count,
+        "students_failed": fail_count,
+        "teacher_emailed": teacher_sent,
+        "present": len(present_list),
+        "absent": len(absent_list)
     })

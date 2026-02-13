@@ -44,6 +44,14 @@ def init_db():
                 cursor.execute(f"ALTER TABLE attendance_logs ADD COLUMN {col} {typedef}")
                 print(f"[MIGRATE] Added '{col}' to attendance_logs")
 
+        # ── Migrate class_schedules table ──
+        cursor.execute("PRAGMA table_info(class_schedules)")
+        sched_cols = [col[1] for col in cursor.fetchall()]
+
+        if 'teacher_email' not in sched_cols:
+            cursor.execute("ALTER TABLE class_schedules ADD COLUMN teacher_email TEXT DEFAULT ''")
+            print("[MIGRATE] Added 'teacher_email' to class_schedules")
+
         # ── Indexes (safe to re-run) ──
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_student_name ON students(name)")

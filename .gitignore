@@ -20,6 +20,10 @@ env/
 
 # ── Environment Config (SENSITIVE) ──
 .env
+key.txt
+*.key
+*.pem
+*.secret
 
 # ── Database ──
 *.db
