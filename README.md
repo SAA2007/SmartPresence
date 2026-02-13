@@ -344,8 +344,9 @@ This project was built for academic purposes.
 
 ## 🔮 Future Improvements
 
+- [ ] Liveness detection (anti-spoofing via EAR blink analysis)
 - [ ] Multi-camera support
-- [ ] Database encryption (SQLCipher / Fernet)
-- [ ] SMS notifications (WhatsApp/Telegram alerts for absences)
-- [ ] Mobile app for students to view their own attendance
-- [ ] GPU-accelerated CNN face detection
+- [ ] Database encryption (SQLCipher)
+- [ ] WhatsApp/SMS absence notifications (Telegram already integrated)
+- [ ] Mobile-native app (web lookup already available at `/lookup`)
+- [ ] Automated daily database backups
