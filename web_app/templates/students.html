@@ -119,10 +119,14 @@
     let allStudents = [];
 
     function loadStudents() {
-        fetch('/api/students').then(r => r.json()).then(data => {
+        safeFetch('/api/students').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             allStudents = data;
             renderStudents(data);
-        });
+        }).catch(() => showToast('Failed to load students', 'error'));
     }
 
     function renderStudents(students) {
@@ -134,17 +138,17 @@
         tbody.innerHTML = students.map(s => `
         <tr>
             <td>${s.id}</td>
-            <td><a href="/student/${s.id}" class="text-decoration-none" style="color:var(--accent);"><strong>${s.name}</strong></a></td>
-            <td class="text-muted">${s.student_id || '—'}</td>
-            <td class="text-muted">${s.email || '—'}</td>
-            <td class="text-muted small">${s.notes || '—'}</td>
+            <td><a href="/student/${s.id}" class="text-decoration-none" style="color:var(--accent);"><strong>${escapeHtml(s.name)}</strong></a></td>
+            <td class="text-muted">${escapeHtml(s.student_id) || '—'}</td>
+            <td class="text-muted">${escapeHtml(s.email) || '—'}</td>
+            <td class="text-muted small">${escapeHtml(s.notes) || '—'}</td>
             <td class="text-muted small">${new Date(s.created_at).toLocaleDateString('en-GB')}</td>
             <td>
                 <a href="/student/${s.id}" class="btn btn-outline-info btn-xs" title="View Profile"><i class="bi bi-eye"></i></a>
-                <button class="btn btn-outline-light btn-xs" onclick='editStudent(${JSON.stringify(s)})'>
+                <button class="btn btn-outline-light btn-xs" onclick="editStudent(${s.id})">
                     <i class="bi bi-pencil"></i>
                 </button>
-                <button class="btn btn-outline-danger btn-xs" onclick="deleteStudent(${s.id}, '${s.name.replace(/'/g, "\\'")}')">
+                <button class="btn btn-outline-danger btn-xs" onclick="deleteStudent(${s.id}, '${escapeHtml(s.name).replace(/'/g, "\\'")}')">
                     <i class="bi bi-trash"></i>
                 </button>
             </td>
@@ -152,35 +156,9 @@
     `).join('');
     }
 
-    function addStudent() {
-        const name = document.getElementById('addName').value.trim();
-        if (!name) { showToast('Name is required'); return; }
-
-        fetch('/api/students', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: name,
-                student_id: document.getElementById('addSid').value.trim(),
-                email: document.getElementById('addEmail').value.trim(),
-                notes: document.getElementById('addNotes').value.trim()
-            })
-        }).then(r => r.json()).then(data => {
-            if (data.success) {
-                showToast(`${name} added!`);
-                bootstrap.Modal.getInstance(document.getElementById('addStudentModal')).hide();
-                document.getElementById('addName').value = '';
-                document.getElementById('addSid').value = '';
-                document.getElementById('addEmail').value = '';
-                document.getElementById('addNotes').value = '';
-                loadStudents();
-            } else {
-                showToast('Error: ' + (data.error || 'Unknown'));
-            }
-        });
-    }
-
-    function editStudent(s) {
+    function editStudent(id) {
+        const s = allStudents.find(x => x.id === id);
+        if (!s) return;
         document.getElementById('editId').value = s.id;
         document.getElementById('editName').value = s.name;
         document.getElementById('editSid').value = s.student_id || '';
@@ -189,9 +167,41 @@
         new bootstrap.Modal(document.getElementById('editStudentModal')).show();
     }
 
+    function addStudent() {
+        const name = document.getElementById('addName').value.trim();
+        if (!name) { showToast('Name is required'); return; }
+
+        safeFetch('/api/students', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                student_id: document.getElementById('addSid').value.trim(),
+                email: document.getElementById('addEmail').value.trim(),
+                notes: document.getElementById('addNotes').value.trim()
+            })
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            if (data.success) {
+                showToast(`${name} added!`, 'success');
+                bootstrap.Modal.getInstance(document.getElementById('addStudentModal')).hide();
+                document.getElementById('addName').value = '';
+                document.getElementById('addSid').value = '';
+                document.getElementById('addEmail').value = '';
+                document.getElementById('addNotes').value = '';
+                loadStudents();
+            } else {
+                showToast(data.error || 'Unknown error', 'error');
+            }
+        });
+    }
+
     function saveStudent() {
         const id = document.getElementById('editId').value;
-        fetch(`/api/students/${id}`, {
+        safeFetch(`/api/students/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -200,9 +210,13 @@
                 email: document.getElementById('editEmail').value.trim(),
                 notes: document.getElementById('editNotes').value.trim()
             })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
-                showToast('Student updated!');
+                showToast('Student updated!', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('editStudentModal')).hide();
                 loadStudents();
             }
@@ -211,9 +225,13 @@
 
     function deleteStudent(id, name) {
         if (!confirm(`Delete "${name}" and ALL their attendance records? This cannot be undone.`)) return;
-        fetch(`/api/students/${id}`, { method: 'DELETE' })
-            .then(r => r.json()).then(() => {
-                showToast(`${name} deleted`);
+        safeFetch(`/api/students/${id}`, { method: 'DELETE' })
+            .then(r => {
+                if (!r) return;
+                return r.json();
+            }).then(data => {
+                if (!data) return;
+                showToast(`${name} deleted`, 'success');
                 loadStudents();
             });
     }

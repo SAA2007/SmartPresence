@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}System Debug - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-bug"></i> System Diagnostics</h1>
+    <a href="/settings" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-left"></i> Back</a>
+</div>
+
+<div class="row g-3">
+    <!-- System Info -->
+    <div class="col-md-6">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-cpu"></i> System</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted">Python</td>
+                        <td id="dbgPython">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">OS</td>
+                        <td id="dbgOS">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Machine</td>
+                        <td id="dbgMachine">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">CWD</td>
+                        <td id="dbgCwd" class="small text-break">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Version</td>
+                        <td id="dbgVersion">—</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database -->
+    <div class="col-md-6">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-database"></i> Database</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted">Students</td>
+                        <td id="dbgStudents">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Attendance Logs</td>
+                        <td id="dbgLogs">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Users</td>
+                        <td id="dbgUsers">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">DB Size</td>
+                        <td id="dbgSize">—</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Engine -->
+    <div class="col-md-6">
+        <div class="card glass-card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-robot"></i> AI Engine</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted">Status</td>
+                        <td id="dbgAIStatus">—</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Camera Source</td>
+                        <td id="dbgCamera">—</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    safeFetch('/api/debug').then(r => {
+        if (!r) return;
+        return r.json();
+    }).then(data => {
+        if (!data) return;
+
+        document.getElementById('dbgPython').textContent = data.system.python;
+        document.getElementById('dbgOS').textContent = data.system.os;
+        document.getElementById('dbgMachine').textContent = data.system.machine;
+        document.getElementById('dbgCwd').textContent = data.system.cwd;
+        document.getElementById('dbgVersion').textContent = data.version;
+
+        document.getElementById('dbgStudents').textContent = data.database.students;
+        document.getElementById('dbgLogs').textContent = data.database.attendance_logs;
+        document.getElementById('dbgUsers').textContent = data.database.users;
+        document.getElementById('dbgSize').textContent = data.database.size_kb + ' KB';
+
+        const running = data.ai_engine.running;
+        document.getElementById('dbgAIStatus').innerHTML = running
+            ? '<span class="badge bg-success">Running</span>'
+            : '<span class="badge bg-secondary">Stopped</span>';
+        document.getElementById('dbgCamera').textContent = data.ai_engine.camera_source;
+    }).catch(() => {
+        showToast('Failed to load debug info', 'error');
+    });
+</script>
+{% endblock %}

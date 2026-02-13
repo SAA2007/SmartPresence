@@ -10,6 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
 </head>
 
 <body>
@@ -80,7 +81,15 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script>
-        // Global toast function
+        // Global XSS protection — use on ALL user-supplied data before innerHTML
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        // Global toast function (message is escaped to prevent XSS)
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
             if (!container) return;
@@ -91,16 +100,27 @@
             toast.className = 'toast show mb-2';
             toast.style.cssText = `background:var(--bg-secondary);border:1px solid var(--border-color);min-width:250px;`;
             toast.innerHTML = `<div class="toast-body d-flex align-items-center gap-2">
-                <span style="color:${colors[type] || colors.info};">●</span> ${message}
+                <span style="color:${colors[type] || colors.info};">●</span> ${escapeHtml(message)}
                 <button type="button" class="btn-close btn-close-white btn-sm ms-auto" onclick="this.closest('.toast').remove()"></button>
             </div>`;
             container.appendChild(toast);
             setTimeout(() => { if (toast.parentNode) toast.remove(); }, 4000);
         }
 
-        // Global safeFetch
+        // Global safeFetch with CSRF token
         async function safeFetch(url, options = {}) {
             try {
+                // Auto-inject CSRF token for state-changing methods
+                const method = (options.method || 'GET').toUpperCase();
+                if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+                    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                    if (csrfMeta && csrfMeta.content) {
+                        options.headers = {
+                            ...(options.headers || {}),
+                            'X-CSRFToken': csrfMeta.content
+                        };
+                    }
+                }
                 const r = await fetch(url, options);
                 if (r.status === 401) { window.location.href = '/login'; return null; }
                 if (!r.ok) {
@@ -117,7 +137,11 @@
 
         // System status indicator
         function updateSystemIndicator() {
-            fetch('/api/system/status').then(r => r.json()).then(data => {
+            safeFetch('/api/system/status').then(r => {
+                if (!r) return;
+                return r.json();
+            }).then(data => {
+                if (!data) return;
                 const el = document.getElementById('systemIndicator');
                 if (!el) return;
                 const running = data.ai_running;

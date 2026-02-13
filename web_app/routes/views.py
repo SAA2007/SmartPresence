@@ -42,6 +42,11 @@ def logout():
     return redirect(url_for('views.login'))
 
 
+@views_bp.route('/lookup')
+def student_lookup():
+    return render_template('lookup.html')
+
+
 # ── Protected Routes ──
 
 @views_bp.route('/')
@@ -80,6 +85,12 @@ def report():
     return render_template('report.html')
 
 
+@views_bp.route('/timetable')
+@login_required
+def timetable():
+    return render_template('timetable.html')
+
+
 @views_bp.route('/student/<int:student_id>')
 @login_required
 def student_detail(student_id):
@@ -92,6 +103,12 @@ def student_detail(student_id):
 @admin_required
 def user_management():
     return render_template('user_management.html')
+
+
+@views_bp.route('/debug')
+@admin_required
+def debug_page():
+    return render_template('debug.html')
 
 
 # ── Video Feed (requires login) ──

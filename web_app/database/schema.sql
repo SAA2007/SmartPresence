@@ -1,4 +1,4 @@
--- SmartPresence Schema v3 (Phase 5C)
+-- SmartPresence Schema v4 (Beta)
 
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,4 +39,28 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     schedule_id INTEGER,
     FOREIGN KEY (student_id) REFERENCES students (id) ON DELETE CASCADE,
     FOREIGN KEY (schedule_id) REFERENCES class_schedules (id)
+);
+
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_logs (student_id);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_timestamp ON attendance_logs (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_day ON class_schedules (day_of_week);
+
+-- Camera Configuration
+CREATE TABLE IF NOT EXISTS cameras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    source TEXT NOT NULL, -- "0", "1", or "rtsp://..."
+    type TEXT NOT NULL DEFAULT 'usb', -- 'usb', 'ip', 'file'
+    is_active BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Persistent Settings (Key-Value)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

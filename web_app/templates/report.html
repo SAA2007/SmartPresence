@@ -97,7 +97,7 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
 
-        fetch('/api/report', {
+        safeFetch('/api/report', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 description: desc,
@@ -108,7 +108,11 @@
                 include_browser: document.getElementById('includeBrowser').checked,
                 user_agent: navigator.userAgent
             })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
                 let msg = 'Report submitted!';
                 if (data.telegram_sent) msg += ' 📤 Sent to Telegram.';

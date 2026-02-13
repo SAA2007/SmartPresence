@@ -188,10 +188,14 @@
     let chart = null;
 
     // Load students for manual entry
-    fetch('/api/students').then(r => r.json()).then(students => {
+    safeFetch('/api/students').then(r => {
+        if (!r) return;
+        return r.json();
+    }).then(students => {
+        if (!students) return;
         const sel = document.getElementById('manualStudent');
         students.forEach(s => {
-            sel.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+            sel.innerHTML += `<option value="${s.id}">${escapeHtml(s.name)}</option>`;
         });
     });
 
@@ -200,7 +204,7 @@
         const sid = document.getElementById('manualStudent').value;
         if (!sid) { showToast('Select a student first'); return; }
 
-        fetch('/api/attendance', {
+        safeFetch('/api/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -208,14 +212,18 @@
                 status: document.getElementById('manualStatus').value,
                 notes: document.getElementById('manualNotes').value
             })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
-                showToast('Attendance recorded!');
+                showToast('Attendance recorded!', 'success');
                 loadAttendance();
                 loadStats();
                 document.getElementById('manualNotes').value = '';
             } else {
-                showToast('Error: ' + (data.error || 'Unknown'));
+                showToast('Error: ' + (data.error || 'Unknown'), 'error');
             }
         });
     }
@@ -230,16 +238,20 @@
 
     function submitOverride() {
         const id = document.getElementById('overrideId').value;
-        fetch(`/api/attendance/${id}`, {
+        safeFetch(`/api/attendance/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 status: document.getElementById('overrideStatus').value,
                 notes: document.getElementById('overrideNotes').value
             })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
-                showToast('Override saved!');
+                showToast('Override saved!', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('overrideModal')).hide();
                 loadAttendance();
                 loadStats();
@@ -249,9 +261,13 @@
 
     function deleteLog(id) {
         if (!confirm('Delete this attendance record?')) return;
-        fetch(`/api/attendance/${id}`, { method: 'DELETE' })
-            .then(r => r.json()).then(() => {
-                showToast('Record deleted');
+        safeFetch(`/api/attendance/${id}`, { method: 'DELETE' })
+            .then(r => {
+                if (!r) return;
+                return r.json();
+            }).then(data => {
+                if (!data) return;
+                showToast('Record deleted', 'success');
                 loadAttendance();
                 loadStats();
             });
@@ -281,7 +297,11 @@
             btn.classList.add('active');
         }
 
-        fetch(`/api/stats/chart?days=${days}`).then(r => r.json()).then(data => {
+        safeFetch(`/api/stats/chart?days=${days}`).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             const ctx = document.getElementById('attendanceChart').getContext('2d');
 
             if (chart) chart.destroy();
@@ -298,6 +318,12 @@
                             label: 'Present',
                             data: data.present,
                             backgroundColor: 'rgba(46, 204, 113, 0.7)',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Late',
+                            data: data.late,
+                            backgroundColor: 'rgba(243, 156, 18, 0.6)',
                             borderRadius: 4
                         },
                         {

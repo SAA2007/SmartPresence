@@ -52,23 +52,41 @@
 {% block scripts %}
 <script>
     function setScale(val) {
-        fetch('/api/settings', {
+        safeFetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ detection_scale: val })
-        }).then(() => {
-            showToast('Scale set to ' + val + 'x');
+            body: JSON.stringify({ DETECTION_SCALE: val })
+        }).then(r => {
+            if (!r) return;
+            showToast('Scale set to ' + val + 'x', 'success');
+            // Update active button state
+            document.querySelectorAll('.btn-group [onclick^="setScale"]').forEach(b => b.classList.remove('active'));
+            document.querySelector(`[onclick="setScale(${val})"]`)?.classList.add('active');
         });
     }
 
+    // Load current scale and highlight active button on page load
+    safeFetch('/api/settings').then(r => {
+        if (!r) return;
+        return r.json();
+    }).then(data => {
+        if (!data) return;
+        const scale = parseFloat(data.detection_scale);
+        document.querySelector(`[onclick="setScale(${scale})"]`)?.classList.add('active');
+    });
+
     // Auto-refresh detected faces
     setInterval(() => {
-        fetch('/api/stats').then(r => r.json()).then(data => {
+        safeFetch('/api/stats').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             const el = document.getElementById('detectedList');
             if (data.present_today > 0) {
                 el.innerHTML = `<p class="text-success"><i class="bi bi-check-circle"></i> ${data.present_today} student(s) present</p>`;
             }
-        });
+        }).catch(() => { });
     }, 3000);
 </script>
 {% endblock %}

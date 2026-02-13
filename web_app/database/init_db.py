@@ -44,11 +44,56 @@ def init_db():
                 cursor.execute(f"ALTER TABLE attendance_logs ADD COLUMN {col} {typedef}")
                 print(f"[MIGRATE] Added '{col}' to attendance_logs")
 
-        # ── Indexes ──
+        # ── Indexes (safe to re-run) ──
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_student_name ON students(name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_logs(student_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_timestamp ON attendance_logs(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedule_day ON class_schedules(day_of_week)")
         except sqlite3.OperationalError:
             pass
+
+        # ── Cameras Table (Migration) ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cameras (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL,
+                type TEXT NOT NULL DEFAULT 'usb',
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Seed default camera if none exists
+        cursor.execute("SELECT count(*) FROM cameras")
+        if cursor.fetchone()[0] == 0:
+            print("[SEED] Adding default Integrated Camera (ID 0)")
+            cursor.execute("INSERT INTO cameras (name, source, type, is_active) VALUES (?, ?, ?, ?)",
+                           ("Integrated Camera", "0", "usb", 1))
+
+        # ── Settings Table (Migration) ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Seed default settings
+        defaults = {
+            'DETECTOR_MODEL': 'dlib',     # 'dlib' | 'mediapipe'
+            'TOLERANCE': '0.5',
+            'DETECTION_SCALE': '0.5',
+            'LATE_THRESHOLD': '10',
+            'DISAPPEAR_THRESHOLD': '15',
+            'RECHECK_INTERVAL': '300',
+            'SYSTEM_MODE': 'auto',
+            'FRAME_SKIP': '3'             # For MediaPipe/performance tuning
+        }
+        for k, v in defaults.items():
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
         # ── Seed admin user ──
         cursor.execute("SELECT id FROM users WHERE username = 'admin'")

@@ -117,8 +117,15 @@
 
 {% block scripts %}
 <script>
+    let allUsers = [];
+
     function loadUsers() {
-        fetch('/api/users').then(r => r.json()).then(data => {
+        safeFetch('/api/users').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            allUsers = data;
             const tbody = document.getElementById('usersTable');
             if (!data.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No users</td></tr>'; return; }
             tbody.innerHTML = data.map((u, i) => {
@@ -126,42 +133,48 @@
                 const created = new Date(u.created_at).toLocaleDateString('en-GB');
                 return `<tr>
                 <td>${i + 1}</td>
-                <td><strong>${u.username}</strong></td>
-                <td>${u.display_name}</td>
+                <td><strong>${escapeHtml(u.username)}</strong></td>
+                <td>${escapeHtml(u.display_name)}</td>
                 <td>${roleBadge}</td>
                 <td class="text-muted small">${created}</td>
                 <td>
-                    <button class="btn btn-outline-light btn-xs" onclick='editUser(${JSON.stringify(u)})'><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-outline-danger btn-xs" onclick="deleteUser(${u.id}, '${u.username}')"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-outline-light btn-xs" onclick="editUser(${u.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-xs" onclick="deleteUser(${u.id}, '${escapeHtml(u.username).replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>`;
             }).join('');
-        }).catch(() => showToast('Failed to load users'));
+        }).catch(() => showToast('Failed to load users', 'error'));
     }
 
     function addUser() {
         const username = document.getElementById('addUsername').value.trim();
         const password = document.getElementById('addPassword').value;
         if (!username || !password) { showToast('Username and password are required'); return; }
-        if (password.length < 4) { showToast('Password must be at least 4 characters'); return; }
+        if (password.length < 6) { showToast('Password must be at least 6 characters'); return; }
 
-        fetch('/api/users', {
+        safeFetch('/api/users', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username, password,
                 display_name: document.getElementById('addDisplayName').value.trim(),
                 role: document.getElementById('addRole').value
             })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
-                showToast('User created!');
+                showToast('User created!', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('addUserModal')).hide();
                 loadUsers();
-            } else { showToast(data.error || 'Failed'); }
-        }).catch(() => showToast('Network error'));
+            } else { showToast(data.error || 'Failed', 'error'); }
+        });
     }
 
-    function editUser(u) {
+    function editUser(id) {
+        const u = allUsers.find(x => x.id === id);
+        if (!u) return;
         document.getElementById('editUserId').value = u.id;
         document.getElementById('editDisplayName').value = u.display_name;
         document.getElementById('editRole').value = u.role;
@@ -178,24 +191,32 @@
         const pw = document.getElementById('editPassword').value;
         if (pw) body.password = pw;
 
-        fetch(`/api/users/${id}`, {
+        safeFetch(`/api/users/${id}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
-                showToast('User updated!');
+                showToast('User updated!', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
                 loadUsers();
-            } else { showToast(data.error || 'Failed'); }
-        }).catch(() => showToast('Network error'));
+            } else { showToast(data.error || 'Failed', 'error'); }
+        });
     }
 
     function deleteUser(id, name) {
         if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
-        fetch(`/api/users/${id}`, { method: 'DELETE' }).then(r => r.json()).then(data => {
-            if (data.success) { showToast('User deleted'); loadUsers(); }
-            else { showToast(data.error || 'Failed'); }
-        }).catch(() => showToast('Network error'));
+        safeFetch(`/api/users/${id}`, { method: 'DELETE' }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            if (data.success) { showToast('User deleted', 'success'); loadUsers(); }
+            else { showToast(data.error || 'Failed', 'error'); }
+        });
     }
 
     loadUsers();

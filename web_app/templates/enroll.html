@@ -47,12 +47,13 @@
                     <input type="text" id="enrollName" class="form-control" placeholder="First and Last Name">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Student ID</label>
-                    <input type="text" id="enrollSid" class="form-control" placeholder="e.g. 2024-CS-101">
+                    <label class="form-label">Student ID <span class="text-danger">*</span></label>
+                    <input type="text" id="enrollSid" class="form-control" placeholder="e.g. 2024-CS-101" required>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Email</label>
-                    <input type="email" id="enrollEmail" class="form-control" placeholder="student@university.edu">
+                    <label class="form-label">Email <span class="text-danger">*</span></label>
+                    <input type="email" id="enrollEmail" class="form-control" placeholder="student@university.edu"
+                        required>
                 </div>
                 <div id="enrollStatus" class="mb-3" style="display:none;"></div>
                 <button class="btn btn-accent w-100" id="enrollBtn" onclick="enrollStudent()" disabled>
@@ -92,6 +93,16 @@
             document.getElementById('enrollVideo').srcObject = videoStream;
         } catch (e) {
             console.warn('Camera not available:', e);
+            const video = document.getElementById('enrollVideo');
+            video.style.display = 'none';
+            const container = video.parentElement;
+            container.insertAdjacentHTML('afterbegin',
+                `<div class="alert alert-warning py-2 mb-2 small text-center">
+                    <i class="bi bi-camera-video-off"></i> Camera unavailable.
+                    Use the <strong>upload option</strong> below to add a photo.
+                </div>`);
+            document.getElementById('captureBtn').disabled = true;
+            showToast('Camera access denied or unavailable', 'warning');
         }
     }
 
@@ -130,6 +141,14 @@
         const file = input.files[0];
         if (!file) return;
 
+        // Client-side size limit: 5MB
+        const MAX_SIZE = 5 * 1024 * 1024;
+        if (file.size > MAX_SIZE) {
+            showToast(`Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`, 'error');
+            input.value = '';
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = function (e) {
             imageData = e.target.result;
@@ -146,9 +165,13 @@
         reader.readAsDataURL(file);
     }
 
-    function enrollStudent() {
+    function enrollStudent(force = false) {
         const name = document.getElementById('enrollName').value.trim();
+        const studentId = document.getElementById('enrollSid').value.trim();
+        const email = document.getElementById('enrollEmail').value.trim();
         if (!name) { showToast('Name is required'); return; }
+        if (!studentId) { showToast('Student ID is required'); return; }
+        if (!email) { showToast('Email is required'); return; }
         if (!imageData) { showToast('Capture or upload a photo first'); return; }
 
         const btn = document.getElementById('enrollBtn');
@@ -157,33 +180,46 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processing...';
         status.style.display = 'none';
 
-        fetch('/api/enroll', {
+        safeFetch('/api/enroll', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: name,
-                student_id: document.getElementById('enrollSid').value.trim(),
-                email: document.getElementById('enrollEmail').value.trim(),
-                image: imageData
+                student_id: studentId,
+                email: email,
+                image: imageData,
+                force: force
             })
         })
-            .then(r => r.json())
+            .then(r => {
+                if (!r) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-person-check"></i> Enroll Student'; return; }
+                return r.json();
+            })
             .then(data => {
+                if (!data) return;
                 if (data.success) {
                     status.style.display = 'block';
                     status.className = 'mb-3 alert alert-success py-2 small';
-                    status.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${name}</strong> enrolled successfully! The AI will recognize them immediately.`;
-                    showToast(`${name} enrolled!`);
+                    status.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${escapeHtml(name)}</strong> enrolled successfully! The AI will recognize them immediately.`;
+                    showToast(`${name} enrolled!`, 'success');
 
                     // Reset form
                     document.getElementById('enrollName').value = '';
                     document.getElementById('enrollSid').value = '';
                     document.getElementById('enrollEmail').value = '';
                     retakePhoto();
+                } else if (data.duplicate) {
+                    // Duplicate face detected — show override option
+                    status.style.display = 'block';
+                    status.className = 'mb-3 alert alert-warning py-2 small';
+                    status.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${escapeHtml(data.error)}
+                        <br><button class="btn btn-sm btn-outline-warning mt-2" onclick="enrollStudent(true)">
+                        <i class="bi bi-shield-exclamation"></i> Override — enroll anyway</button>`;
+                    btn.disabled = false;
                 } else {
                     status.style.display = 'block';
                     status.className = 'mb-3 alert alert-danger py-2 small';
-                    status.innerHTML = `<i class="bi bi-exclamation-circle"></i> ${data.error}`;
+                    status.innerHTML = `<i class="bi bi-exclamation-circle"></i> ${escapeHtml(data.error)}`;
                     btn.disabled = false;
                 }
                 btn.innerHTML = '<i class="bi bi-person-check"></i> Enroll Student';
@@ -191,7 +227,7 @@
             .catch(err => {
                 status.style.display = 'block';
                 status.className = 'mb-3 alert alert-danger py-2 small';
-                status.innerHTML = `<i class="bi bi-exclamation-circle"></i> Network error: ${err.message}`;
+                status.innerHTML = `<i class="bi bi-exclamation-circle"></i> Network error: ${escapeHtml(err.message)}`;
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-person-check"></i> Enroll Student';
             });

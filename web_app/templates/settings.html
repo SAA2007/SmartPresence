@@ -2,7 +2,7 @@
 {% block title %}Settings - SmartPresence{% endblock %}
 {% block content %}
 <div class="page-header">
-    <h1><i class="bi bi-gear"></i> Settings</h1>
+    <h1><i class="bi bi-gear" id="easterEggTrigger" style="cursor:default;"></i> Settings</h1>
 </div>
 
 <div class="row g-3">
@@ -284,7 +284,11 @@
 <script>
     // ── Load Settings ──
     function loadSettings() {
-        fetch('/api/settings').then(r => r.json()).then(data => {
+        safeFetch('/api/settings').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             document.getElementById('scaleSlider').value = data.detection_scale;
             document.getElementById('scaleValue').textContent = data.detection_scale + 'x';
             document.getElementById('toleranceSlider').value = data.tolerance;
@@ -304,7 +308,11 @@
 
     // ── Load System Status ──
     function loadSystemInfo() {
-        fetch('/api/system/status').then(r => r.json()).then(data => {
+        safeFetch('/api/system/status').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             document.getElementById('aiStatus').innerHTML = data.ai_running
                 ? '<span class="text-success"><i class="bi bi-circle-fill"></i> Running</span>'
                 : '<span class="text-danger"><i class="bi bi-circle-fill"></i> Stopped</span>';
@@ -323,7 +331,9 @@
     });
 
     function saveSettings() {
-        fetch('/api/settings', {
+        const btn = event?.target;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving...'; }
+        safeFetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -332,18 +342,27 @@
                 late_threshold: parseInt(document.getElementById('lateSlider').value),
                 disappear_threshold: parseInt(document.getElementById('disappearSlider').value)
             })
-        }).then(r => r.json()).then(data => {
-            if (data.success) showToast('Settings saved!', 'success');
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (data && data.success) showToast('Settings saved!', 'success');
+        }).finally(() => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save"></i> Save Settings'; }
         });
     }
 
     // ── System Controls ──
     function setMode(mode) {
-        fetch('/api/system', {
+        safeFetch('/api/system', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'set_mode', mode: mode })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
                 showToast('Mode: ' + mode, 'success');
                 document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -354,12 +373,17 @@
     }
 
     function systemAction(action) {
-        fetch('/api/system', {
+        if (action !== 'shutdown' && !confirm(`Are you sure you want to ${action} the AI?`)) return;
+        safeFetch('/api/system', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: action })
-        }).then(r => r.json()).then(data => {
-            showToast(data.message || 'Done');
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            showToast(data.message || 'Done', 'success');
             setTimeout(loadSystemInfo, 1000);
         });
     }
@@ -371,7 +395,11 @@
 
     // ── Schedule ──
     function loadSchedule() {
-        fetch('/api/schedule').then(r => r.json()).then(data => {
+        safeFetch('/api/schedule').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             const tbody = document.getElementById('scheduleTable');
             if (data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No schedule defined. Add class slots above.</td></tr>';
@@ -382,10 +410,10 @@
 
             tbody.innerHTML = data.map(s => `
             <tr>
-                <td><strong>${s.day_of_week}</strong></td>
-                <td>${s.start_time}</td>
-                <td>${s.end_time}</td>
-                <td>${s.class_name}</td>
+                <td><strong>${escapeHtml(s.day_of_week)}</strong></td>
+                <td>${escapeHtml(s.start_time)}</td>
+                <td>${escapeHtml(s.end_time)}</td>
+                <td>${escapeHtml(s.class_name)}</td>
                 <td>
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" ${s.is_active ? 'checked' : ''} 
@@ -408,13 +436,17 @@
         const end = document.getElementById('schedEnd').value;
         const name = document.getElementById('schedName').value.trim() || 'Class';
 
-        if (!day || !start || !end) { showToast('Fill in all fields', 'warning'); return; }
+        if (end <= start) { showToast('End time must be after start time', 'warning'); return; }
 
-        fetch('/api/schedule', {
+        safeFetch('/api/schedule', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ day_of_week: day, start_time: start, end_time: end, class_name: name })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
                 showToast('Schedule slot added!', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('addScheduleModal')).hide();
@@ -424,18 +456,25 @@
     }
 
     function toggleSchedule(id, active) {
-        fetch(`/api/schedule/${id}`, {
+        safeFetch(`/api/schedule/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ is_active: active ? 1 : 0 })
-        }).then(r => r.json()).then(data => {
-            if (data.success) showToast(active ? 'Slot enabled' : 'Slot disabled', 'success');
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (data && data.success) showToast(active ? 'Slot enabled' : 'Slot disabled', 'success');
         });
     }
 
     function deleteSchedule(id) {
         if (!confirm('Delete this schedule slot?')) return;
-        fetch(`/api/schedule/${id}`, { method: 'DELETE' }).then(r => r.json()).then(() => {
+        safeFetch(`/api/schedule/${id}`, { method: 'DELETE' }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             showToast('Slot deleted', 'success');
             loadSchedule();
         });
@@ -445,11 +484,15 @@
     function unlockConfig() {
         const pin = document.getElementById('settingsPin').value;
         if (!pin) { showToast('Enter PIN', 'warning'); return; }
-        fetch('/api/auth/verify-pin', {
+        safeFetch('/api/auth/verify-pin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pin: pin })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
                 document.getElementById('pinGate').style.display = 'none';
                 document.getElementById('configPanel').style.display = 'block';
@@ -462,7 +505,11 @@
     }
 
     function loadConfig() {
-        fetch('/api/config').then(r => r.json()).then(data => {
+        safeFetch('/api/config').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.config) {
                 const c = data.config;
                 document.getElementById('cfgTelegramToken').value = c.TELEGRAM_BOT_TOKEN || '';
@@ -491,11 +538,15 @@
         }
         if (Object.keys(updates).length === 0) { showToast('Nothing to save — fill in at least one field', 'warning'); return; }
 
-        fetch('/api/config', {
+        safeFetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ updates: updates })
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             if (data.success) {
                 showToast(data.message, 'success');
                 loadConfig();
@@ -512,10 +563,14 @@
     }
 
     function loadVersion() {
-        fetch('/api/config/version').then(r => r.json()).then(data => {
+        safeFetch('/api/config/version').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
             const el = document.getElementById('versionInfo');
             el.style.display = 'block';
-            el.innerHTML = `<strong>v${data.version}</strong> · Phase ${data.phase} · ${data.codename} · Built ${data.build_date}`;
+            el.innerHTML = `<strong>v${escapeHtml(data.version)}</strong> · Phase ${escapeHtml(String(data.phase))} · ${escapeHtml(data.codename)} · Built ${escapeHtml(data.build_date)}`;
         });
     }
 
@@ -529,5 +584,23 @@
     loadSystemInfo();
     loadSchedule();
     setInterval(loadSystemInfo, 5000);
+
+    // Easter egg: 18 clicks on gear icon → debug page
+    (function () {
+        let clicks = 0, timer = null;
+        const trigger = document.getElementById('easterEggTrigger');
+        if (trigger) {
+            trigger.addEventListener('click', function (e) {
+                e.stopPropagation();
+                clicks++;
+                clearTimeout(timer);
+                timer = setTimeout(() => { clicks = 0; }, 5000);
+                if (clicks >= 18) {
+                    clicks = 0;
+                    window.location.href = '/debug';
+                }
+            });
+        }
+    })();
 </script>
 {% endblock %}

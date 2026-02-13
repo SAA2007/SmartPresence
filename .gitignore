@@ -23,6 +23,7 @@ env/
 
 # ── Database ──
 *.db
+*.sqlite
 *.sqlite3
 
 # ── Large Library / Model Dirs ──
@@ -37,6 +38,14 @@ ai_module/known_faces/
 # ── Logs & Reports ──
 antigravity.log
 crash_reports/
+crash_debug.log
+*.log
+
+# ── Test / Debug Artifacts ──
+.pytest_cache/
+htmlcov/
+.coverage
+e2e_error.png
 
 # ── OS Files ──
 .DS_Store

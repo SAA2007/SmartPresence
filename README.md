@@ -129,6 +129,8 @@ python -m web_app.app
 
 Open **<http://localhost:5000>** in your browser.
 
+> ⚠️ **Deployment Note**: This application must run as a **single process** (`threaded=True`, not multi-worker). The AI state (face encodings, video stream) is stored in-memory and will not sync across multiple WSGI workers. Use the built-in server or a single-worker Gunicorn deployment.
+
 ### Default Login
 
 | Field | Value |

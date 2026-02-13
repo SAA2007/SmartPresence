@@ -106,7 +106,11 @@
         'Permitted': 'bg-permitted', 'Excused': 'bg-excused'
     };
 
-    fetch(`/api/students/${studentId}`).then(r => r.json()).then(data => {
+    safeFetch(`/api/students/${studentId}`).then(r => {
+        if (!r) return;
+        return r.json();
+    }).then(data => {
+        if (!data) return;
         if (data.error) { document.getElementById('studentName').textContent = 'Not Found'; return; }
 
         document.getElementById('studentName').textContent = data.name;
@@ -144,9 +148,9 @@
             return `<tr>
             <td>${i + 1}</td>
             <td class="text-muted small">${dateStr}</td>
-            <td><span class="badge ${color}">${r.status}</span></td>
+            <td><span class="badge ${color}">${escapeHtml(r.status)}</span></td>
             <td>${srcIcon}</td>
-            <td class="text-muted small">${r.notes || '—'}</td>
+            <td class="text-muted small">${escapeHtml(r.notes) || '—'}</td>
         </tr>`;
         }).join('');
     }).catch(() => {

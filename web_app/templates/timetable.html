@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Timetable - SmartPresence{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-calendar-week"></i> Class Timetable</h1>
+</div>
+
+<div class="card glass-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="timetableTable">
+                <thead>
+                    <tr>
+                        <th>Day</th>
+                        <th>Time</th>
+                        <th>Class</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="timetableBody">
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Schedule Modal -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background:var(--bg-card);border:1px solid var(--border-color);">
+            <div class="modal-header border-0">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Add Class</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Day of Week <span class="text-danger">*</span></label>
+                    <select id="schedDay" class="form-select">
+                        <option value="">Select...</option>
+                        <option>Monday</option>
+                        <option>Tuesday</option>
+                        <option>Wednesday</option>
+                        <option>Thursday</option>
+                        <option>Friday</option>
+                        <option>Saturday</option>
+                        <option>Sunday</option>
+                    </select>
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Start Time <span class="text-danger">*</span></label>
+                        <input type="time" id="schedStart" class="form-control">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">End Time <span class="text-danger">*</span></label>
+                        <input type="time" id="schedEnd" class="form-control">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Class Name</label>
+                    <input type="text" id="schedName" class="form-control" placeholder="e.g. Mathematics 101">
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-accent" onclick="addSchedule()">
+                    <i class="bi bi-plus"></i> Add
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button class="btn btn-accent" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+        <i class="bi bi-plus-circle"></i> Add Class
+    </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    function loadTimetable() {
+        safeFetch('/api/schedule').then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            const tbody = document.getElementById('timetableBody');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No classes scheduled</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(s => `<tr>
+                <td><span class="badge bg-secondary">${escapeHtml(s.day_of_week)}</span></td>
+                <td>${escapeHtml(s.start_time)} — ${escapeHtml(s.end_time)}</td>
+                <td>${escapeHtml(s.class_name || 'Class')}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSchedule(${s.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>`).join('');
+        }).catch(() => {
+            showToast('Failed to load timetable', 'error');
+        });
+    }
+
+    function addSchedule() {
+        const day = document.getElementById('schedDay').value;
+        const start = document.getElementById('schedStart').value;
+        const end = document.getElementById('schedEnd').value;
+        const name = document.getElementById('schedName').value.trim() || 'Class';
+
+        if (!day || !start || !end) {
+            showToast('Day, start time, and end time are required');
+            return;
+        }
+
+        safeFetch('/api/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ day_of_week: day, start_time: start, end_time: end, class_name: name })
+        }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (!data) return;
+            if (data.success) {
+                showToast('Class added!', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('addScheduleModal')).hide();
+                document.getElementById('schedDay').value = '';
+                document.getElementById('schedStart').value = '';
+                document.getElementById('schedEnd').value = '';
+                document.getElementById('schedName').value = '';
+                loadTimetable();
+            }
+        }).catch(() => {
+            showToast('Failed to add class', 'error');
+        });
+    }
+
+    function deleteSchedule(id) {
+        if (!confirm('Delete this class?')) return;
+        safeFetch('/api/schedule/' + id, { method: 'DELETE' }).then(r => {
+            if (!r) return;
+            return r.json();
+        }).then(data => {
+            if (data && data.success) {
+                showToast('Class deleted', 'success');
+                loadTimetable();
+            }
+        }).catch(() => {
+            showToast('Failed to delete', 'error');
+        });
+    }
+
+    loadTimetable();
+</script>
+{% endblock %}

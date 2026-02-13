@@ -1,3 +1,4 @@
+import numpy as np
 import cv2
 import face_recognition
 import pickle
@@ -12,6 +13,8 @@ from datetime import datetime, timedelta
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ai_module import common
+from ai_module.settings import SettingsManager
+from ai_module import detectors
 
 log = common.get_logger('recognition')
 
@@ -31,24 +34,58 @@ class FaceSystemThreaded:
         self.is_running = False
         self.lock = threading.Lock()
         self.show_debug = True
+        
+        # Detector
+        self.detector_name = SettingsManager.get('DETECTOR_MODEL', default='dlib')
+        self._init_detector()
 
         # Trackers
         self.trackers = []
         self.tracking_names = []
 
-        # Session tracking: {student_name: schedule_id} — prevents duplicate logs per class
+        # Session tracking
         self.session_logged = {}
-        # Last seen tracking: {student_name: timestamp}
         self.last_seen = {}
         self.last_disappear_check = 0
 
         self.sync_students_to_db()
 
+    def _init_detector(self):
+        """Initialize the face detector based on settings."""
+        try:
+            if self.detector_name == 'mediapipe' and detectors.HAS_MEDIAPIPE:
+                self.detector = detectors.MediaPipeDetector()
+                log.info("Initialized MediaPipe Face Detector (Fast)")
+            else:
+                self.detector = detectors.DlibDetector()
+                log.info("Initialized Dlib Face Detector (Accurate)")
+        except Exception as e:
+            log.error(f"Detector init failed: {e}. Fallback to Dlib.")
+            self.detector = detectors.DlibDetector()
+        
+    def _check_settings_change(self):
+        """Check if detector settings changed and reload if needed."""
+        new_model = SettingsManager.get('DETECTOR_MODEL', default='dlib')
+        if new_model != self.detector_name:
+            log.info(f"Detector change detected: {self.detector_name} -> {new_model}")
+            self.detector_name = new_model
+            self._init_detector()
+
     def load_encodings(self):
         if os.path.exists(common.ENCODINGS_PATH):
             try:
                 with open(common.ENCODINGS_PATH, "rb") as f:
-                    return pickle.load(f)
+                    data = pickle.load(f)
+                if not isinstance(data, dict):
+                    return {"names": [], "encodings": []}
+                names = data.get("names", [])
+                encodings = data.get("encodings", [])
+                # Ensure lists
+                if not isinstance(names, list) or not isinstance(encodings, list):
+                    return {"names": [], "encodings": []}
+                # Truncate mismatch
+                min_len = min(len(names), len(encodings))
+                return {"names": names[:min_len], "encodings": encodings[:min_len]}
             except Exception as e:
                 log.error(f"Could not load encodings: {e}")
         return {"names": [], "encodings": []}
@@ -57,9 +94,9 @@ class FaceSystemThreaded:
         try:
             with sqlite3.connect(common.DB_PATH) as conn:
                 cursor = conn.cursor()
+                existing = {row[0] for row in cursor.execute("SELECT name FROM students").fetchall()}
                 for name in set(self.known_names):
-                    cursor.execute("SELECT id FROM students WHERE name = ?", (name,))
-                    if not cursor.fetchone():
+                    if name not in existing:
                         cursor.execute("INSERT INTO students (name) VALUES (?)", (name,))
                         log.info(f"Auto-synced new student to DB: {name}")
                 conn.commit()
@@ -70,14 +107,14 @@ class FaceSystemThreaded:
 
     def get_active_schedule(self):
         """Check if current time falls inside any active class schedule."""
-        mode = getattr(common, 'SYSTEM_MODE', 'auto')
+        mode = SettingsManager.get('SYSTEM_MODE', default='auto')
         if mode == 'force_on':
             return {'id': -1, 'class_name': 'Manual', 'start_time': '00:00', 'end_time': '23:59'}
         if mode == 'force_off':
             return None
 
         now = datetime.now()
-        day_name = now.strftime('%A')  # Monday, Tuesday, etc.
+        day_name = now.strftime('%A')
         current_time = now.strftime('%H:%M')
 
         try:
@@ -90,125 +127,95 @@ class FaceSystemThreaded:
                     ORDER BY start_time LIMIT 1
                 """, (day_name, current_time)).fetchone()
                 return dict(row) if row else None
-        except Exception as e:
-            log.warning(f"Schedule check failed: {e}")
+        except Exception:
             return None
 
     def determine_status(self, schedule):
-        """Determine if the student is On Time or Late based on class start + threshold."""
         if not schedule or schedule.get('id') == -1:
             return 'Present'
-
         now = datetime.now()
         try:
-            start_parts = schedule['start_time'].split(':')
-            class_start = now.replace(hour=int(start_parts[0]), minute=int(start_parts[1]), second=0)
-            threshold = getattr(common, 'LATE_THRESHOLD', 10)
-            late_cutoff = class_start + timedelta(minutes=threshold)
-
-            if now <= late_cutoff:
+            s_time = schedule['start_time'].split(':')
+            c_start = now.replace(hour=int(s_time[0]), minute=int(s_time[1]), second=0)
+            thresh = SettingsManager.get('LATE_THRESHOLD', type_cast=int)
+            if now <= c_start + timedelta(minutes=thresh):
                 return 'On Time'
-            else:
-                return 'Late'
+            return 'Late'
         except Exception:
             return 'Present'
 
-    # ── Attendance Logging with Smart Dedup ──────────────
-
     def log_attendance(self, name):
-        """Log attendance with schedule awareness and session dedup."""
         schedule = self.get_active_schedule()
-
-        # If no active schedule (and mode is auto), don't log
         if schedule is None:
             return
 
         schedule_id = schedule.get('id')
         session_key = f"{name}:{schedule_id}"
 
-        # Session dedup: only log once per student per class slot
         if session_key in self.session_logged:
-            # Still update last_seen
             self.last_seen[name] = time.time()
             return
 
         try:
             with sqlite3.connect(common.DB_PATH) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT id FROM students WHERE name = ?", (name,))
-                result = cursor.fetchone()
-
-                if result:
-                    student_id = result[0]
+                res = cursor.execute("SELECT id FROM students WHERE name = ?", (name,)).fetchone()
+                if res:
+                    student_id = res[0]
                     status = self.determine_status(schedule)
                     sid = schedule_id if schedule_id != -1 else None
-
                     cursor.execute(
                         "INSERT INTO attendance_logs (student_id, status, source, schedule_id, last_seen) VALUES (?, ?, 'ai', ?, ?)",
                         (student_id, status, sid, datetime.now().isoformat())
                     )
                     conn.commit()
-
                     self.session_logged[session_key] = True
                     self.last_seen[name] = time.time()
-                    log.info(f"[ATTENDANCE] {name} → {status}" +
-                             (f" ({schedule.get('class_name', '')})" if schedule.get('class_name') else ""))
+                    log.info(f"[ATTENDANCE] {name} → {status}")
         except Exception as e:
             log.error(f"Attendance log failed: {e}")
 
-    # ── Disappearance Tracking ───────────────────────────
-
     def check_disappearances(self):
-        """Check for students who were present but vanished."""
         now = time.time()
-
-        # Only check every RECHECK_INTERVAL seconds
-        interval = getattr(common, 'RECHECK_INTERVAL', 300)
+        interval = SettingsManager.get('RECHECK_INTERVAL', type_cast=int)
         if now - self.last_disappear_check < interval:
             return
         self.last_disappear_check = now
 
-        threshold_secs = getattr(common, 'DISAPPEAR_THRESHOLD', 15) * 60
+        threshold = SettingsManager.get('DISAPPEAR_THRESHOLD', type_cast=int) * 60
         schedule = self.get_active_schedule()
         if schedule is None:
             return
 
         for name, last_time in list(self.last_seen.items()):
             elapsed = now - last_time
-            if elapsed > threshold_secs:
+            if elapsed > threshold:
                 session_key = f"{name}:disappeared"
                 if session_key in self.session_logged:
                     continue
-
                 try:
                     with sqlite3.connect(common.DB_PATH) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT id FROM students WHERE name = ?", (name,))
-                        result = cursor.fetchone()
-                        if result:
-                            cursor.execute(
+                        res = conn.execute("SELECT id FROM students WHERE name = ?", (name,)).fetchone()
+                        if res:
+                            conn.execute(
                                 "INSERT INTO attendance_logs (student_id, status, source, notes) VALUES (?, 'Disappeared', 'ai', ?)",
-                                (result[0], f"Last seen {int(elapsed/60)} min ago")
+                                (res[0], f"Last seen {int(elapsed/60)} min ago")
                             )
                             conn.commit()
                             self.session_logged[session_key] = True
-                            log.warning(f"[DISAPPEARED] {name} — last seen {int(elapsed/60)} min ago")
-                except Exception as e:
-                    log.error(f"Disappearance check failed: {e}")
-
-    # ── Reset Session on Schedule Change ─────────────────
+                            log.warning(f"[DISAPPEARED] {name}")
+                except Exception:
+                    pass
 
     def maybe_reset_session(self, schedule):
-        """Reset session tracking when a new class slot starts."""
         if schedule is None:
             return
-
         new_key = f"_schedule_{schedule.get('id')}_{schedule.get('start_time')}"
         if not hasattr(self, '_current_schedule_key') or self._current_schedule_key != new_key:
             self._current_schedule_key = new_key
             self.session_logged.clear()
             self.last_seen.clear()
-            log.info(f"New class session: {schedule.get('class_name', 'Unknown')} ({schedule.get('start_time')}–{schedule.get('end_time')})")
+            log.info(f"New class session: {schedule.get('class_name')}")
 
     # ── AI Loop ──────────────────────────────────────────
 
@@ -219,35 +226,49 @@ class FaceSystemThreaded:
             with self.lock:
                 if self.latest_frame is not None:
                     frame_to_process = self.latest_frame.copy()
-
+            
             if frame_to_process is not None:
-                # Check schedule & reset sessions as needed
+                # 1. Update Settings / Detector
+                self._check_settings_change()
+                
+                # 2. Schedule & Cleanup
                 schedule = self.get_active_schedule()
                 self.maybe_reset_session(schedule)
                 self.check_disappearances()
 
-                scale = getattr(common, 'DETECTION_SCALE', 0.5)
+                # 3. Process Frame
+                scale = SettingsManager.get('DETECTION_SCALE', type_cast=float)
                 rgb_frame = cv2.cvtColor(frame_to_process, cv2.COLOR_BGR2RGB)
 
                 if scale != 1.0:
                     small_frame = cv2.resize(rgb_frame, (0, 0), fx=scale, fy=scale)
+                    small_frame_bgr = cv2.resize(frame_to_process, (0, 0), fx=scale, fy=scale)
                 else:
                     small_frame = rgb_frame
+                    small_frame_bgr = frame_to_process
 
-                boxes = face_recognition.face_locations(small_frame, model="hog")
+                # DETECT (Uses selected model)
+                # Pass BGR because detectors convert if needed, or use BGR direct (Dlib HOG)
+                boxes = self.detector.detect_faces(small_frame_bgr)
 
                 results = []
                 if boxes:
+                    # RECOGNIZE (Always uses dlib/face_recognition for encodings)
+                    # face_encodings expects RGB, but helper converts. Passing small_frame (RGB) is safe.
                     encodings = face_recognition.face_encodings(small_frame, boxes)
 
                     for box, encoding in zip(boxes, encodings):
-                        matches = face_recognition.compare_faces(self.known_encodings, encoding, tolerance=common.TOLERANCE)
+                        tolerance = SettingsManager.get('TOLERANCE', type_cast=float)
+                        matches = face_recognition.compare_faces(self.known_encodings, encoding, tolerance=tolerance)
                         name = "Unknown"
+                        
                         if True in matches:
-                            first_match_index = matches.index(True)
-                            name = self.known_names[first_match_index]
+                            face_distances = face_recognition.face_distance(self.known_encodings, encoding)
+                            best_match_index = int(np.argmin(face_distances))
+                            name = self.known_names[best_match_index]
                             self.log_attendance(name)
 
+                        # Upscale coords for display
                         if scale != 1.0:
                             top, right, bottom, left = box
                             top = int(top / scale)
@@ -261,7 +282,6 @@ class FaceSystemThreaded:
                 # Init Trackers
                 new_trackers = []
                 new_tracking_names = []
-
                 if self.is_running:
                     for box, name in results:
                         top, right, bottom, left = box
@@ -277,7 +297,9 @@ class FaceSystemThreaded:
                     self.tracking_names = new_tracking_names
                     self.new_results_available = True
 
-            time.sleep(0.03)
+                time.sleep(0.03)
+            else:
+                time.sleep(0.1)
 
     # ── Standalone Mode ──────────────────────────────────
 
@@ -285,10 +307,33 @@ class FaceSystemThreaded:
         log.info("Starting Threaded Recognition System...")
         log.info("  > Hotkeys: 's' = Toggle Scale | 'd' = Toggle Debug | 'q' = Quit")
 
-        cap = cv2.VideoCapture(common.CAMERA_ID)
+        from ai_module.camera_manager import CameraManager
+        
+        # Retry loop for camera
+        cap = None
+        while cap is None:
+            cam_config = CameraManager.get_active_camera()
+            source = cam_config.get('source', '0')
+            name = cam_config.get('name', 'Unknown')
+            
+            if source.isdigit():
+                source = int(source)
+                
+            log.info(f"Opening camera: {name} (Source: {source})...")
+            try:
+                cap = cv2.VideoCapture(source)
+                if not cap.isOpened():
+                    log.warning("Camera failed to open. Retrying in 2s...")
+                    cap = None
+                    time.sleep(2)
+            except Exception as e:
+                log.error(f"Camera error: {e}")
+                time.sleep(2)
+
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, common.FRAME_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, common.FRAME_HEIGHT)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        # RTSP might ignore FPS, but harmless
         cap.set(cv2.CAP_PROP_FPS, 60)
 
         actual_fps = cap.get(cv2.CAP_PROP_FPS)
