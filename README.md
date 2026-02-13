@@ -37,10 +37,10 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| **AI Engine** | `ai_module/` | Face detection, recognition, liveness check, centroid tracking |
+| **AI Engine** | `ai_module/` | Face detection, recognition, dlib correlation tracking |
 | **Web Backend** | `web_app/routes/` | REST API (47+ endpoints), authentication, data management |
 | **Email Service** | `web_app/email_service.py` | SMTP email reports (student + teacher + admin) |
-| **Frontend** | `web_app/templates/` | 15 HTML pages — Dashboard, Timetable, Enrollment, Settings, etc. |
+| **Frontend** | `web_app/templates/` | 14 HTML pages — Dashboard, Timetable, Enrollment, Settings, etc. |
 | **Database** | `web_app/database/` | SQLite schema + initialization + migrations |
 
 ---
@@ -50,9 +50,10 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 ### Core AI
 
 - **Real-time face recognition** using dlib's 128-dim face encoding
-- **Liveness detection** via MediaPipe Face Mesh (blink detection to prevent photo spoofing)
-- **Centroid tracking** to maintain identity across frames without re-running recognition every frame
+- **dlib correlation tracking** to maintain identity across frames without re-running recognition every frame
 - **Configurable thresholds** (detection scale, recognition tolerance, late/disappear timers)
+
+> **Note**: Liveness detection (anti-spoofing via EAR blink detection) is a planned feature, not yet implemented.
 
 ### Attendance Management
 
@@ -98,7 +99,7 @@ SmartPresence replaces manual roll calls with a camera-based system that:
 |-------|-----------|-----|
 | **Face Detection** | dlib (HOG/CNN) | Industry-standard, accurate face detection |
 | **Face Recognition** | face_recognition lib | Simplified dlib wrapper, 128-dim encodings |
-| **Liveness** | MediaPipe Face Mesh | Lightweight, real-time blink detection |
+| **Tracking** | dlib correlation_tracker | Inter-frame face position tracking (DCF) |
 | **Image Processing** | OpenCV | Camera capture, frame manipulation |
 | **Web Framework** | Flask | Lightweight Python web server |
 | **Database** | SQLite | Zero-config, file-based relational DB |
@@ -181,7 +182,7 @@ SmartPresence/
 │   ├── routes/
 │   │   ├── api.py              # REST API (47+ endpoints)
 │   │   └── views.py            # Page routes + auth decorators
-│   ├── templates/              # HTML pages (15 templates)
+│   ├── templates/              # HTML pages (14 templates)
 │   │   ├── base.html           # Layout + sidebar + global JS
 │   │   ├── login.html          # Login page
 │   │   ├── dashboard.html      # Main dashboard
@@ -192,11 +193,10 @@ SmartPresence/
 │   │   ├── timetable.html      # Class timetable + email reports
 │   │   ├── settings.html       # System settings + admin config
 │   │   ├── report.html         # Crash/issue reporting
-│   │   ├── users.html          # User management (admin)
 │   │   ├── lookup.html         # Student self-lookup (public)
+│   │   ├── user_management.html # User management (admin)
 │   │   ├── debug.html          # System diagnostics (admin)
-│   │   ├── 403.html            # Forbidden error page
-│   │   └── attendance.html     # Attendance log viewer
+│   │   └── 403.html            # Forbidden error page
 │   └── static/
 │       ├── css/style.css       # Dark theme + glassmorphism
 │       └── js/dashboard.js     # Chart.js dashboard logic
@@ -273,13 +273,14 @@ Teacher clicks "Report" on Timetable page
     → Any send failures are reported to admin email
 ```
 
-### Liveness Detection (Anti-Spoofing)
+### Liveness Detection (Planned — Not Yet Implemented)
 
 ```
 Face Detected → MediaPipe Face Mesh (468 landmarks)
     → Calculate Eye Aspect Ratio (EAR)
     → If EAR drops below threshold → Blink detected
     → No blinks for extended period → Flag as possible photo
+    (This feature is planned for a future release)
 ```
 
 ---
@@ -292,11 +293,11 @@ Face Detected → MediaPipe Face Mesh (468 landmarks)
 
 ### "How do you prevent cheating with photos?"
 >
-> **Liveness detection** using MediaPipe Face Mesh. It tracks 468 facial landmarks in real-time and monitors the Eye Aspect Ratio (EAR). A real person blinks naturally; a printed photo does not. If no blinks are detected over a period, the system flags it as a potential spoof attempt.
+> Liveness detection (anti-spoofing) is **planned but not yet implemented**. The intended approach uses MediaPipe Face Mesh to monitor the Eye Aspect Ratio (EAR) — a real person blinks naturally; a printed photo does not. Currently, a teacher's physical presence in the classroom serves as the primary anti-spoofing measure.
 
-### "What's Centroid Tracking?"
+### "What's dlib correlation tracking?"
 >
-> Instead of running the expensive face recognition algorithm on every single frame (which would lag at 30 FPS), we run recognition periodically (every N frames) and use **centroid tracking** in between. This tracks faces by their center position across consecutive frames, maintaining identity without re-computing encodings. This gives us real-time performance on standard hardware.
+> Instead of running the expensive face recognition algorithm on every single frame (which would lag at 30 FPS), we run recognition periodically in a background thread and use **dlib's `correlation_tracker()`** in between. Each recognized face is assigned a DCF (Discriminative Correlation Filter) tracker that follows its position across consecutive frames — much faster than re-computing 128-dim encodings. This gives us real-time performance on standard hardware.
 
 ### "Why SQLite instead of MySQL/PostgreSQL?"
 >
@@ -320,7 +321,7 @@ Face Detected → MediaPipe Face Mesh (468 landmarks)
 
 ### "What are the hardware requirements?"
 >
-> Minimum: Core i5 8th Gen, 8GB RAM, any USB webcam. Recommended: dedicated GPU for faster dlib CNN detection (the system auto-detects CUDA). On CPU, we use HOG detection which runs at ~5–10 FPS recognition with centroid tracking smoothing the experience.
+> Minimum: Core i5 8th Gen, 8GB RAM, any USB webcam. Recommended: dedicated GPU for faster dlib CNN detection (the system auto-detects CUDA). On CPU, we use HOG detection which runs at ~5–10 FPS recognition with dlib correlation tracking smoothing the display experience.
 
 ---
 
@@ -328,8 +329,8 @@ Face Detected → MediaPipe Face Mesh (468 landmarks)
 
 | Role | Responsibilities |
 |------|------------------|
-| **AI & Vision Lead** | OpenCV integration, face recognition pipeline, liveness detection |
-| **Optimization & Tracking** | Performance tuning, centroid tracking, frame skipping strategy |
+| **AI & Vision Lead** | OpenCV integration, face recognition pipeline, detection models |
+| **Optimization & Tracking** | Performance tuning, dlib correlation tracking, frame skipping strategy |
 | **Backend & Database** | Flask API design, SQLite schema, authentication system |
 | **Frontend & UI** | Dashboard design, real-time charts, responsive dark theme |
 
